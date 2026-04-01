@@ -1,222 +1,313 @@
-<p align="center">
-  <img src="assets/TauricResearch.png" style="width: 60%; height: auto;">
-</p>
+# TradingAgents Crypto — AI 多智能体加密货币合约交易系统
 
-<div align="center" style="line-height: 1;">
-  <a href="https://arxiv.org/abs/2412.20138" target="_blank"><img alt="arXiv" src="https://img.shields.io/badge/arXiv-2412.20138-B31B1B?logo=arxiv"/></a>
-  <a href="https://discord.com/invite/hk9PGKShPK" target="_blank"><img alt="Discord" src="https://img.shields.io/badge/Discord-TradingResearch-7289da?logo=discord&logoColor=white&color=7289da"/></a>
-  <a href="./assets/wechat.png" target="_blank"><img alt="WeChat" src="https://img.shields.io/badge/WeChat-TauricResearch-brightgreen?logo=wechat&logoColor=white"/></a>
-  <a href="https://x.com/TauricResearch" target="_blank"><img alt="X Follow" src="https://img.shields.io/badge/X-TauricResearch-white?logo=x&logoColor=white"/></a>
-  <br>
-  <a href="https://github.com/TauricResearch/" target="_blank"><img alt="Community" src="https://img.shields.io/badge/Join_GitHub_Community-TauricResearch-14C290?logo=discourse"/></a>
-</div>
+> 基于 [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) v0.2.3 扩展开发  
+> 论文：[TradingAgents: Multi-Agents LLM Financial Trading Framework](https://arxiv.org/abs/2412.20138)
 
-<div align="center">
-  <!-- Keep these links. Translations will automatically update with the README. -->
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=de">Deutsch</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=es">Español</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=fr">français</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=ja">日本語</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=ko">한국어</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=pt">Português</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=ru">Русский</a> | 
-  <a href="https://www.readme-i18n.com/TauricResearch/TradingAgents?lang=zh">中文</a>
-</div>
+将原始股票交易框架改造为专门交易 **BTC/USDT 和 ETH/USDT 永续合约**的 AI 系统，部署在 Bitget 交易所（支持沙盒/实盘）。
 
 ---
 
-# TradingAgents: Multi-Agents LLM Financial Trading Framework
+## 核心架构
 
-## News
-- [2026-03] **TradingAgents v0.2.3** released with multi-language support, GPT-5.4 family models, unified model catalog, backtesting date fidelity, and proxy support.
-- [2026-03] **TradingAgents v0.2.2** released with GPT-5.4/Gemini 3.1/Claude 4.6 model coverage, five-tier rating scale, OpenAI Responses API, Anthropic effort control, and cross-platform stability.
-- [2026-02] **TradingAgents v0.2.0** released with multi-provider LLM support (GPT-5.x, Gemini 3.x, Claude 4.x, Grok 4.x) and improved system architecture.
-- [2026-01] **Trading-R1** [Technical Report](https://arxiv.org/abs/2509.11420) released, with [Terminal](https://github.com/TauricResearch/Trading-R1) expected to land soon.
-
-<div align="center">
-<a href="https://www.star-history.com/#TauricResearch/TradingAgents&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=TauricResearch/TradingAgents&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=TauricResearch/TradingAgents&type=Date" />
-   <img alt="TradingAgents Star History" src="https://api.star-history.com/svg?repos=TauricResearch/TradingAgents&type=Date" style="width: 80%; height: auto;" />
- </picture>
-</a>
-</div>
-
-> 🎉 **TradingAgents** officially released! We have received numerous inquiries about the work, and we would like to express our thanks for the enthusiasm in our community.
->
-> So we decided to fully open-source the framework. Looking forward to building impactful projects with you!
-
-<div align="center">
-
-🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation & CLI](#installation-and-cli) | 🎬 [Demo](https://www.youtube.com/watch?v=90gr5lwjIho) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
-
-</div>
-
-## TradingAgents Framework
-
-TradingAgents is a multi-agent trading framework that mirrors the dynamics of real-world trading firms. By deploying specialized LLM-powered agents: from fundamental analysts, sentiment experts, and technical analysts, to trader, risk management team, the platform collaboratively evaluates market conditions and informs trading decisions. Moreover, these agents engage in dynamic discussions to pinpoint the optimal strategy.
-
-<p align="center">
-  <img src="assets/schema.png" style="width: 100%; height: auto;">
-</p>
-
-> TradingAgents framework is designed for research purposes. Trading performance may vary based on many factors, including the chosen backbone language models, model temperature, trading periods, the quality of data, and other non-deterministic factors. [It is not intended as financial, investment, or trading advice.](https://tauric.ai/disclaimer/)
-
-Our framework decomposes complex trading tasks into specialized roles. This ensures the system achieves a robust, scalable approach to market analysis and decision-making.
-
-### Analyst Team
-- Fundamentals Analyst: Evaluates company financials and performance metrics, identifying intrinsic values and potential red flags.
-- Sentiment Analyst: Analyzes social media and public sentiment using sentiment scoring algorithms to gauge short-term market mood.
-- News Analyst: Monitors global news and macroeconomic indicators, interpreting the impact of events on market conditions.
-- Technical Analyst: Utilizes technical indicators (like MACD and RSI) to detect trading patterns and forecast price movements.
-
-<p align="center">
-  <img src="assets/analyst.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Researcher Team
-- Comprises both bullish and bearish researchers who critically assess the insights provided by the Analyst Team. Through structured debates, they balance potential gains against inherent risks.
-
-<p align="center">
-  <img src="assets/researcher.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Trader Agent
-- Composes reports from the analysts and researchers to make informed trading decisions. It determines the timing and magnitude of trades based on comprehensive market insights.
-
-<p align="center">
-  <img src="assets/trader.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Risk Management and Portfolio Manager
-- Continuously evaluates portfolio risk by assessing market volatility, liquidity, and other risk factors. The risk management team evaluates and adjusts trading strategies, providing assessment reports to the Portfolio Manager for final decision.
-- The Portfolio Manager approves/rejects the transaction proposal. If approved, the order will be sent to the simulated exchange and executed.
-
-<p align="center">
-  <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-## Installation and CLI
-
-### Installation
-
-Clone TradingAgents:
-```bash
-git clone https://github.com/TauricResearch/TradingAgents.git
-cd TradingAgents
+```
+Bitget 行情数据
+      │
+      ▼
+┌─────────────────────────────────────────────────────┐
+│                   分析师层（串行）                    │
+│  📊 市场分析师   📰 新闻分析师                        │
+│  💬 情绪分析师   🔗 链上/微观结构分析师                │
+└──────────────────────┬──────────────────────────────┘
+                       │
+              ┌────────┴────────┐
+              │   研究员辩论     │
+              │  🐂 多头研究员   │
+              │  🐻 空头研究员   │
+              └────────┬────────┘
+                       │
+              ┌────────▼────────┐
+              │  研究经理（Claude Sonnet）  │  ← 综合研究报告
+              └────────┬────────┘
+                       │
+              ┌────────▼────────┐
+              │     交易员       │  ← 生成初始交易计划
+              └────────┬────────┘
+                       │
+              ┌────────┴────────┐
+              │   风险辩论三方   │
+              │  ⚡ 激进分析师   │
+              │  🛡️ 保守分析师   │
+              │  ⚖️ 中立分析师   │
+              └────────┬────────┘
+                       │
+              ┌────────▼────────┐
+              │ 组合管理者（Claude Sonnet）│  ← 最终交易决策
+              └────────┬────────┘
+                       │
+              ┌────────▼────────┐
+              │  BitgetExecutor  │  ← 解析信号 + 下单
+              │  市价单 + 止损   │
+              │  止盈TP1 + TP2   │
+              └─────────────────┘
 ```
 
-Create a virtual environment in any of your favorite environment managers:
-```bash
-conda create -n tradingagents python=3.13
-conda activate tradingagents
+**决策输出格式示例：**
+```
+DIRECTION: LONG
+LEVERAGE: 5x
+ENTRY: 市价
+STOP_LOSS: 65000
+TAKE_PROFIT_1: 68000  (平仓 50% 仓位)
+TAKE_PROFIT_2: 71000  (平仓剩余仓位)
+POSITION_SIZE: 20%
 ```
 
-Install the package and its dependencies:
+---
+
+## 技术栈
+
+| 层次 | 技术 |
+|------|------|
+| AI 框架 | LangChain + LangGraph（StateGraph 多智能体编排） |
+| LLM（深度分析） | Claude Sonnet（研究经理 + 组合管理者） |
+| LLM（快速决策） | Claude Haiku（分析师 + 交易员 + 辩论者） |
+| 交易所 | Bitget 永续合约（via CCXT） |
+| 数据源 | Bitget OHLCV、资金费率、订单簿、持仓量 |
+| 新闻数据 | CryptoPanic API |
+| 技术指标 | pandas 自计算（SMA/EMA/MACD/RSI/BB/ATR/VWMA） |
+| 定时调度 | APScheduler |
+| 包管理 | uv |
+| Python | ≥ 3.10 |
+
+---
+
+## 快速开始
+
+### 1. 克隆项目
+
 ```bash
-pip install .
+git clone https://github.com/1xudengwen96/tradingagent_crypto.git
+cd tradingagent_crypto
 ```
 
-### Required APIs
+### 2. 安装依赖
 
-TradingAgents supports multiple LLM providers. Set the API key for your chosen provider:
+推荐使用 `uv`（项目自带 uv.lock 锁文件）：
 
 ```bash
-export OPENAI_API_KEY=...          # OpenAI (GPT)
-export GOOGLE_API_KEY=...          # Google (Gemini)
-export ANTHROPIC_API_KEY=...       # Anthropic (Claude)
-export XAI_API_KEY=...             # xAI (Grok)
-export OPENROUTER_API_KEY=...      # OpenRouter
-export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
+# 安装 uv（如未安装）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.local/bin/env
+
+# 安装所有项目依赖（自动创建虚拟环境 .venv/）
+uv sync
+
+# 安装加密货币额外依赖
+uv pip install ccxt apscheduler
 ```
 
-For local models, configure Ollama with `llm_provider: "ollama"` in your config.
+或使用 pip：
 
-Alternatively, copy `.env.example` to `.env` and fill in your keys:
+```bash
+pip install -e .
+pip install ccxt apscheduler
+```
+
+### 3. 配置环境变量
+
 ```bash
 cp .env.example .env
 ```
 
-### CLI Usage
+编辑 `.env` 文件，至少填写以下内容：
 
-Launch the interactive CLI:
 ```bash
-tradingagents          # installed command
-python -m cli.main     # alternative: run directly from source
+# LLM（推荐同时填写，仅填 Anthropic 也可运行）
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+OPENAI_API_KEY=sk-xxxxx        # 可选
+
+# Bitget API（沙盒或实盘均可）
+BITGET_API_KEY=bg_xxxxx
+BITGET_SECRET=xxxxx
+BITGET_PASSPHRASE=xxxxx
+BITGET_SANDBOX=true            # 测试时保持 true
 ```
-You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
 
-<p align="center">
-  <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
+> **如何获取 Bitget Sandbox API Key：**
+> 1. 注册 [Bitget](https://www.bitget.com) 账号
+> 2. 切换到 **Demo Trading（模拟交易）** 模式
+> 3. 进入 API 管理 → 创建 API Key，选择永续合约读写权限
 
-An interface will appear showing results as they load, letting you track the agent's progress as it runs.
+### 4. 运行
 
-<p align="center">
-  <img src="assets/cli/cli_news.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
+```bash
+# 推荐：首次运行，只分析不下单，看看 AI 决策质量
+uv run python crypto_main.py --once --no-execute
 
-<p align="center">
-  <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
+# 分析并在沙盒模式下单（需要 Bitget API Key）
+uv run python crypto_main.py --once
 
-## TradingAgents Package
+# 只分析 BTC，不下单
+uv run python crypto_main.py --once --no-execute --symbol BTC/USDT:USDT
 
-### Implementation Details
+# 定时运行（默认每 4 小时自动分析一次）
+uv run python crypto_main.py
 
-We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, OpenRouter, and Ollama.
+# 每 2 小时运行一次
+uv run python crypto_main.py --interval-hours 2
 
-### Python Usage
+# 实盘模式（谨慎！请先设置 BITGET_SANDBOX=false）
+uv run python crypto_main.py --once
+```
 
-To use TradingAgents inside your code, you can import the `tradingagents` module and initialize a `TradingAgentsGraph()` object. The `.propagate()` function will return a decision. You can run `main.py`, here's also a quick example:
+---
+
+## 项目结构
+
+```
+tradingagent_crypto/
+├── crypto_main.py                           # 主入口（APScheduler 定时驱动）
+├── .env.example                             # 环境变量配置模板
+├── pyproject.toml                           # 项目依赖声明
+├── CRYPTO_PROGRESS.md                       # 开发进度记录
+│
+└── tradingagents/
+    ├── default_config.py                    # 默认配置（含 CRYPTO_CONFIG）
+    │
+    ├── agents/
+    │   ├── analysts/
+    │   │   ├── crypto_market_analyst.py     # 技术分析师（K线 + 指标）
+    │   │   ├── crypto_sentiment_analyst.py  # 情绪分析师（资金费率 + 新闻情绪）
+    │   │   ├── crypto_news_analyst.py       # 新闻分析师（宏观 + 币种新闻）
+    │   │   └── crypto_onchain_analyst.py    # 链上/微观结构分析师（订单簿 + OI）
+    │   ├── researchers/
+    │   │   ├── crypto_bull_researcher.py    # 多头研究员（做多论据）
+    │   │   └── crypto_bear_researcher.py    # 空头研究员（做空论据）
+    │   ├── managers/
+    │   │   ├── crypto_research_manager.py   # 研究经理（综合研究裁决）
+    │   │   └── crypto_portfolio_manager.py  # 组合管理者（最终交易决策）
+    │   ├── trader/
+    │   │   └── crypto_trader.py             # 交易员（初始交易计划）
+    │   ├── risk_mgmt/
+    │   │   ├── crypto_aggressive_debator.py # 激进风险分析师
+    │   │   ├── crypto_conservative_debator.py # 保守风险分析师
+    │   │   └── crypto_neutral_debator.py    # 中立风险分析师
+    │   └── utils/
+    │       └── crypto_tools.py              # LangChain @tool 数据工具集
+    │
+    ├── dataflows/
+    │   ├── bitget_vendor.py                 # Bitget 数据层（CCXT 封装）
+    │   └── interface.py                     # 数据路由接口
+    │
+    ├── execution/
+    │   └── bitget_executor.py               # 信号解析 + Bitget 合约下单执行器
+    │
+    └── graph/
+        ├── crypto_setup.py                  # LangGraph StateGraph 装配器
+        └── crypto_trading_graph.py          # 主图类（CryptoTradingAgentsGraph）
+```
+
+---
+
+## 配置说明
+
+所有核心参数在 `tradingagents/default_config.py` 的 `CRYPTO_CONFIG` 中调整：
 
 ```python
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.default_config import DEFAULT_CONFIG
+CRYPTO_CONFIG = {
+    # 交易对（Bitget 永续合约格式）
+    "crypto_symbols": ["BTC/USDT:USDT", "ETH/USDT:USDT"],
 
-ta = TradingAgentsGraph(debug=True, config=DEFAULT_CONFIG.copy())
+    # 交易所设置
+    "sandbox_mode": True,          # False = 切换实盘（危险！）
+    "margin_mode": "isolated",     # "isolated"（逐仓）| "cross"（全仓）
+    "default_leverage": 5,         # 解析失败时的兜底杠杆
 
-# forward propagate
-_, decision = ta.propagate("NVDA", "2026-01-15")
-print(decision)
-```
+    # 数据设置
+    "timeframe": "1h",             # K 线周期：1m/5m/15m/1h/4h/1d
+    "candle_limit": 200,           # 每次拉取的 K 线数量
 
-You can also adjust the default configuration to set your own choice of LLMs, debate rounds, etc.
+    # 资金管理
+    "capital_usdt": 1000.0,        # 账户总资金（用于计算仓位大小）
 
-```python
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.default_config import DEFAULT_CONFIG
+    # LLM 配置
+    "deep_think_llm": "claude-sonnet-4-5",   # 研究经理 + 组合管理者
+    "quick_think_llm": "claude-haiku-4-5",   # 分析师 + 交易员 + 辩论者
 
-config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"        # openai, google, anthropic, xai, openrouter, ollama
-config["deep_think_llm"] = "gpt-5.4"     # Model for complex reasoning
-config["quick_think_llm"] = "gpt-5.4-mini" # Model for quick tasks
-config["max_debate_rounds"] = 2
-
-ta = TradingAgentsGraph(debug=True, config=config)
-_, decision = ta.propagate("NVDA", "2026-01-15")
-print(decision)
-```
-
-See `tradingagents/default_config.py` for all configuration options.
-
-## Contributing
-
-We welcome contributions from the community! Whether it's fixing a bug, improving documentation, or suggesting a new feature, your input helps make this project better. If you are interested in this line of research, please consider joining our open-source financial AI research community [Tauric Research](https://tauric.ai/).
-
-## Citation
-
-Please reference our work if you find *TradingAgents* provides you with some help :)
-
-```
-@misc{xiao2025tradingagentsmultiagentsllmfinancial,
-      title={TradingAgents: Multi-Agents LLM Financial Trading Framework}, 
-      author={Yijia Xiao and Edward Sun and Di Luo and Wei Wang},
-      year={2025},
-      eprint={2412.20138},
-      archivePrefix={arXiv},
-      primaryClass={q-fin.TR},
-      url={https://arxiv.org/abs/2412.20138}, 
+    # 辩论轮次（增大可提升决策质量，但会增加 API 消耗）
+    "max_debate_rounds": 1,
+    "max_risk_discuss_rounds": 1,
 }
 ```
+
+---
+
+## 数据工具说明
+
+| 工具函数 | 数据来源 | 用途 |
+|---------|---------|------|
+| `get_crypto_ohlcv` | Bitget CCXT | K 线数据（OHLCV） |
+| `get_crypto_indicators` | pandas 自计算 | SMA/EMA/MACD/RSI/布林带/ATR/VWMA |
+| `get_crypto_ticker` | Bitget CCXT | 实时价格快照 |
+| `get_funding_rate` | Bitget CCXT | 当前 + 历史资金费率（多空博弈信号）|
+| `get_orderbook` | Bitget CCXT | 买卖盘深度分析（流动性判断）|
+| `get_open_interest` | Bitget CCXT | 持仓量 + 趋势（市场情绪强弱）|
+| `get_crypto_news` | CryptoPanic API | 特定币种新闻 |
+| `get_crypto_global_news` | CryptoPanic API | 全球加密市场宏观新闻 |
+
+---
+
+## 执行层说明
+
+`BitgetExecutor` 收到组合管理者的决策文本后自动执行：
+
+1. **`SignalParser.parse()`** — 正则提取方向 / 杠杆 / 止损 / 止盈 / 仓位比例
+2. 计算合约数量：`capital × position_pct ÷ entry_price ÷ contract_size`
+3. 设置保证金模式 + 杠杆
+4. 市价开仓
+5. 设置止损单（`reduce-only`，保护本金）
+6. 设置止盈 TP1（平仓 50% 仓位）+ TP2（平仓剩余仓位）
+
+**CLOSE 信号处理**：市价平仓所有当前持仓 + 撤销所有挂单
+
+---
+
+## 运行日志
+
+每次分析结果自动保存到以下位置：
+
+| 位置 | 内容 |
+|------|------|
+| 终端 stdout | 实时进度 + 最终决策摘要 |
+| `crypto_trading.log` | 追加模式的完整日志 |
+| `crypto_results/<symbol>/logs/state_<datetime>.json` | 每个智能体的完整输出（便于调试审计）|
+
+---
+
+## 常见问题
+
+**Q: 只有 Anthropic API Key，没有 OpenAI Key 怎么办？**  
+A: 在 `tradingagents/default_config.py` 中，`CRYPTO_CONFIG` 的 `quick_think_llm_provider` 已设为 `"anthropic"`，所有智能体都会使用 Claude，无需 OpenAI Key。
+
+**Q: CryptoPanic 新闻拉取失败？**  
+A: 无 API Key 时公共接口限速 60次/小时。建议在 [cryptopanic.com](https://cryptopanic.com/developers/api/) 免费申请 Key 后填入 `CRYPTOPANIC_API_KEY`。
+
+**Q: Bitget 止损单下单报错？**  
+A: 不同 ccxt 版本的 stop order 参数格式可能有差异。请检查 ccxt 版本（`ccxt.__version__`）并参考 [CCXT Bitget 文档](https://docs.ccxt.com/#/?id=bitget)。
+
+**Q: 如何切换到实盘？**  
+A: 将 `.env` 中的 `BITGET_SANDBOX=false`，并换用实盘 API Key，确保账户有足够 USDT 保证金。**请务必充分测试后再切换！**
+
+---
+
+## 免责声明
+
+> ⚠️ **风险提示**：本项目仅供学习和研究使用。加密货币合约交易存在极高风险，AI 决策不保证盈利。在使用实盘模式前，请充分了解杠杆交易风险，设置合理的止损，并只投入自己能承受损失的资金。
+
+---
+
+## License
+
+MIT License
+
+基于 [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) 开源项目扩展开发，原始框架论文：[arXiv:2412.20138](https://arxiv.org/abs/2412.20138)。

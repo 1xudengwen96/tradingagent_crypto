@@ -19,12 +19,32 @@ from .managers.portfolio_manager import create_portfolio_manager
 
 from .trader.trader import create_trader
 
+# ---- Crypto perpetual futures agents ----
+from .analysts.crypto_market_analyst import create_crypto_market_analyst
+from .analysts.crypto_sentiment_analyst import create_crypto_sentiment_analyst
+from .analysts.crypto_news_analyst import create_crypto_news_analyst
+from .analysts.crypto_onchain_analyst import create_crypto_onchain_analyst
+
+from .researchers.crypto_bull_researcher import create_crypto_bull_researcher
+from .researchers.crypto_bear_researcher import create_crypto_bear_researcher
+
+from .risk_mgmt.crypto_aggressive_debator import create_crypto_aggressive_debator
+from .risk_mgmt.crypto_conservative_debator import create_crypto_conservative_debator
+from .risk_mgmt.crypto_neutral_debator import create_crypto_neutral_debator
+
+from .managers.crypto_research_manager import create_crypto_research_manager
+from .managers.crypto_portfolio_manager import create_crypto_portfolio_manager
+
+from .trader.crypto_trader import create_crypto_trader
+
 __all__ = [
+    # Shared utilities
     "FinancialSituationMemory",
     "AgentState",
     "create_msg_delete",
     "InvestDebateState",
     "RiskDebateState",
+    # Stock agents (original)
     "create_bear_researcher",
     "create_bull_researcher",
     "create_research_manager",
@@ -37,4 +57,17 @@ __all__ = [
     "create_conservative_debator",
     "create_social_media_analyst",
     "create_trader",
+    # Crypto agents
+    "create_crypto_market_analyst",
+    "create_crypto_sentiment_analyst",
+    "create_crypto_news_analyst",
+    "create_crypto_onchain_analyst",
+    "create_crypto_bull_researcher",
+    "create_crypto_bear_researcher",
+    "create_crypto_aggressive_debator",
+    "create_crypto_conservative_debator",
+    "create_crypto_neutral_debator",
+    "create_crypto_research_manager",
+    "create_crypto_portfolio_manager",
+    "create_crypto_trader",
 ]

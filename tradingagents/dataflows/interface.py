@@ -24,6 +24,18 @@ from .alpha_vantage import (
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
 
+# Bitget crypto vendor
+from .bitget_vendor import (
+    get_crypto_ohlcv as bitget_get_crypto_ohlcv,
+    get_crypto_indicators as bitget_get_crypto_indicators,
+    get_funding_rate as bitget_get_funding_rate,
+    get_orderbook as bitget_get_orderbook,
+    get_open_interest as bitget_get_open_interest,
+    get_crypto_news as bitget_get_crypto_news,
+    get_crypto_global_news as bitget_get_crypto_global_news,
+    get_crypto_ticker as bitget_get_crypto_ticker,
+)
+
 # Configuration and routing logic
 from .config import get_config
 
@@ -57,12 +69,27 @@ TOOLS_CATEGORIES = {
             "get_global_news",
             "get_insider_transactions",
         ]
-    }
+    },
+    # ── Crypto data category (Bitget perpetual contracts) ──
+    "crypto_data": {
+        "description": "Crypto perpetual contract data via Bitget/CCXT",
+        "tools": [
+            "get_crypto_ohlcv",
+            "get_crypto_indicators",
+            "get_funding_rate",
+            "get_orderbook",
+            "get_open_interest",
+            "get_crypto_news",
+            "get_crypto_global_news",
+            "get_crypto_ticker",
+        ]
+    },
 }
 
 VENDOR_LIST = [
     "yfinance",
     "alpha_vantage",
+    "bitget",
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -106,6 +133,31 @@ VENDOR_METHODS = {
     "get_insider_transactions": {
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
+    },
+    # ── crypto_data (Bitget perpetual contracts) ──
+    "get_crypto_ohlcv": {
+        "bitget": bitget_get_crypto_ohlcv,
+    },
+    "get_crypto_indicators": {
+        "bitget": bitget_get_crypto_indicators,
+    },
+    "get_funding_rate": {
+        "bitget": bitget_get_funding_rate,
+    },
+    "get_orderbook": {
+        "bitget": bitget_get_orderbook,
+    },
+    "get_open_interest": {
+        "bitget": bitget_get_open_interest,
+    },
+    "get_crypto_news": {
+        "bitget": bitget_get_crypto_news,
+    },
+    "get_crypto_global_news": {
+        "bitget": bitget_get_crypto_global_news,
+    },
+    "get_crypto_ticker": {
+        "bitget": bitget_get_crypto_ticker,
     },
 }
 

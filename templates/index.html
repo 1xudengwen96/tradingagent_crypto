@@ -78,6 +78,17 @@ display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff
 .toggle .slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:0.3s}
 .toggle input:checked+.slider{background:var(--success)}
 .toggle input:checked+.slider::before{transform:translateX(22px)}
+.multi-select{position:relative}
+.multi-select-trigger{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:0.9rem;cursor:pointer;transition:border-color 0.2s}
+.multi-select-trigger:hover{border-color:var(--accent)}
+.multi-select-arrow{transition:transform 0.2s;color:var(--text-secondary)}
+.multi-select-arrow.open{transform:rotate(180deg)}
+.multi-select-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;z-index:50;display:none;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4)}
+.multi-select-dropdown.show{display:block}
+.multi-select-option{display:block;padding:10px 14px;cursor:pointer;font-size:0.88rem;color:var(--text-primary);border-bottom:1px solid rgba(42,53,72,0.3)}
+.multi-select-option:last-child{border-bottom:none}
+.multi-select-option:hover{background:rgba(59,130,246,0.1)}
+.multi-select-option input{margin-right:8px;accent-color:var(--accent)}
 .table-container{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
 table{width:100%;border-collapse:collapse;font-size:0.83rem}
 th{background:var(--bg-input);padding:10px 14px;text-align:left;font-weight:500;color:var(--text-secondary);border-bottom:1px solid var(--border);white-space:nowrap}
@@ -246,7 +257,38 @@ tr:hover td{background:rgba(59,130,246,0.03)}
         <div class="card-title">&#9881;&#65039; 交易参数</div>
         <div class="form-group">
           <label class="form-label">交易对</label>
-          <input type="text" id="cfg_symbols" class="form-input" value="BTC/USDT:USDT,ETH/USDT:USDT" placeholder="逗号分隔，如 BTC/USDT:USDT,ETH/USDT:USDT">
+          <div class="multi-select" id="symbolSelector">
+            <div class="multi-select-trigger" onclick="toggleSymbolDropdown()">
+              <span id="symbolSelectedText">BTC/USDT:USDT, ETH/USDT:USDT</span>
+              <span class="multi-select-arrow">&#9662;</span>
+            </div>
+            <div class="multi-select-dropdown" id="symbolDropdown">
+              <label class="multi-select-option">
+                <input type="checkbox" value="BTC/USDT:USDT" checked onchange="updateSymbolText()"> BTC/USDT (比特币)
+              </label>
+              <label class="multi-select-option">
+                <input type="checkbox" value="ETH/USDT:USDT" checked onchange="updateSymbolText()"> ETH/USDT (以太坊)
+              </label>
+              <label class="multi-select-option">
+                <input type="checkbox" value="SOL/USDT:USDT" onchange="updateSymbolText()"> SOL/USDT (Solana)
+              </label>
+              <label class="multi-select-option">
+                <input type="checkbox" value="XRP/USDT:USDT" onchange="updateSymbolText()"> XRP/USDT (瑞波)
+              </label>
+              <label class="multi-select-option">
+                <input type="checkbox" value="DOGE/USDT:USDT" onchange="updateSymbolText()"> DOGE/USDT (狗狗币)
+              </label>
+              <label class="multi-select-option">
+                <input type="checkbox" value="BNB/USDT:USDT" onchange="updateSymbolText()"> BNB/USDT (币安币)
+              </label>
+              <label class="multi-select-option">
+                <input type="checkbox" value="XAU/USDT" onchange="updateSymbolText()"> XAU/USDT (黄金)
+              </label>
+              <label class="multi-select-option">
+                <input type="checkbox" value="XAG/USDT" onchange="updateSymbolText()"> XAG/USDT (白银)
+              </label>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">资金量 (USDT)</label>
@@ -290,8 +332,18 @@ tr:hover td{background:rgba(59,130,246,0.03)}
           <label class="toggle"><input type="checkbox" id="cfg_auto_execute" checked><span class="slider"></span></label>
           <span style="font-size:0.9rem">自动执行交易（分析+下单）</span>
         </div>
+        <div class="form-group">
+          <label class="form-label">飞书 Webhook URL</label>
+          <div class="input-wrapper">
+            <input type="password" id="cfg_feishu_webhook" class="form-input" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+            <button class="toggle-vis" onclick="toggleVis('cfg_feishu_webhook',this)">&#128065;</button>
+          </div>
+        </div>
       </div>
-      <button class="btn btn-primary" onclick="saveConfig()">&#128190; 保存设置</button>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveConfig()">&#128190; 保存设置</button>
+        <button class="btn btn-outline" onclick="testFeishuWebhook()">&#128232; 测试飞书通知</button>
+      </div>
     </div>
 
     <!-- ========== Positions ========== -->
@@ -383,19 +435,30 @@ async function loadConfig() {
       document.getElementById('cfg_openai_key').value = c.openai_api_key || '';
       document.getElementById('cfg_dashscope_key').value = c.dashscope_api_key || '';
       document.getElementById('cfg_sandbox').checked = c.sandbox_mode !== false;
-      document.getElementById('cfg_symbols').value = (c.crypto_symbols || []).join(',');
+      // Set symbol checkboxes
+      const symbols = c.crypto_symbols || ['BTC/USDT:USDT', 'ETH/USDT:USDT'];
+      document.querySelectorAll('#symbolDropdown input[type="checkbox"]').forEach(cb => {
+        cb.checked = symbols.includes(cb.value);
+      });
+      updateSymbolText();
       document.getElementById('cfg_capital').value = c.capital_usdt || 1000;
       document.getElementById('cfg_interval').value = c.interval_hours || 4;
       document.getElementById('cfg_deep_provider').value = c.deep_think_llm_provider || 'anthropic';
       document.getElementById('cfg_quick_provider').value = c.quick_think_llm_provider || 'anthropic';
       document.getElementById('cfg_language').value = c.output_language || 'Chinese';
       document.getElementById('cfg_auto_execute').checked = c.auto_execute !== false;
+      document.getElementById('cfg_feishu_webhook').value = c.feishu_webhook_url || '';
       updateModeLabel();
     }
   } catch(e) { console.error('Load config failed', e); }
 }
 
 async function saveConfig() {
+  // Get selected symbols from checkboxes
+  const symbols = [];
+  document.querySelectorAll('#symbolDropdown input[type="checkbox"]').forEach(cb => {
+    if (cb.checked) symbols.push(cb.value);
+  });
   const data = {
     bitget_api_key: document.getElementById('cfg_bitget_key').value,
     bitget_secret: document.getElementById('cfg_bitget_secret').value,
@@ -404,7 +467,8 @@ async function saveConfig() {
     anthropic_api_key: document.getElementById('cfg_anthropic_key').value,
     openai_api_key: document.getElementById('cfg_openai_key').value,
     dashscope_api_key: document.getElementById('cfg_dashscope_key').value,
-    crypto_symbols: document.getElementById('cfg_symbols').value.split(',').map(s => s.trim()).filter(s => s),
+    feishu_webhook_url: document.getElementById('cfg_feishu_webhook').value,
+    crypto_symbols: symbols.length > 0 ? symbols : ['BTC/USDT:USDT'],
     capital_usdt: parseFloat(document.getElementById('cfg_capital').value) || 1000,
     interval_hours: parseFloat(document.getElementById('cfg_interval').value) || 4,
     deep_think_llm_provider: document.getElementById('cfg_deep_provider').value,
@@ -437,6 +501,7 @@ async function validateKeys() {
     anthropic_api_key: document.getElementById('cfg_anthropic_key').value,
     openai_api_key: document.getElementById('cfg_openai_key').value,
     dashscope_api_key: document.getElementById('cfg_dashscope_key').value,
+    feishu_webhook_url: '',
     crypto_symbols: ['BTC/USDT:USDT'], capital_usdt: 1000, interval_hours: 4,
     auto_execute: true, output_language: 'Chinese',
     deep_think_llm_provider: 'anthropic', deep_think_llm: 'claude-sonnet-4-5',
@@ -452,7 +517,7 @@ async function validateKeys() {
     container.innerHTML = '';
     if (d.results) {
       for (const [key, val] of Object.entries(d.results)) {
-        const names = {bitget: 'Bitget', anthropic: 'Anthropic', openai: 'OpenAI'};
+        const names = {bitget: 'Bitget', anthropic: 'Anthropic', openai: 'OpenAI', qwen: '通义千问 (Qwen)'};
         container.innerHTML += `<div class="validate-item"><span>${names[key] || key}</span><span class="vstatus ${val.ok ? 'ok' : 'fail'}">${val.ok ? '✓ 连接成功' : '✗ ' + val.message}</span></div>`;
       }
     }
@@ -464,6 +529,47 @@ function toggleVis(inputId, btn) {
   if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
   else { input.type = 'password'; btn.textContent = '👁'; }
 }
+
+function toggleSymbolDropdown() {
+  const dd = document.getElementById('symbolDropdown');
+  const arrow = document.querySelector('.multi-select-arrow');
+  dd.classList.toggle('show');
+  arrow.classList.toggle('open');
+}
+
+function updateSymbolText() {
+  const selected = [];
+  document.querySelectorAll('#symbolDropdown input[type="checkbox"]').forEach(cb => {
+    if (cb.checked) selected.push(cb.value.split('/')[0]);
+  });
+  document.getElementById('symbolSelectedText').textContent = selected.length > 0 ? selected.join(', ') : '未选择';
+}
+
+async function testFeishuWebhook() {
+  const url = document.getElementById('cfg_feishu_webhook').value;
+  if (!url) { showToast('请先填写飞书 Webhook URL', 'error'); return; }
+  try {
+    const r = await fetch('/api/feishu/test', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ webhook_url: url })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast('飞书通知测试成功！', 'success');
+    } else {
+      showToast('飞书通知测试失败: ' + (d.message || '未知错误'), 'error');
+    }
+  } catch(e) { showToast('飞书通知测试失败: ' + e.message, 'error'); }
+}
+
+// Close symbol dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  const ms = document.getElementById('symbolSelector');
+  if (ms && !ms.contains(e.target)) {
+    document.getElementById('symbolDropdown').classList.remove('show');
+    document.querySelector('.multi-select-arrow').classList.remove('open');
+  }
+});
 
 function onModeToggle(cb) {
   if (cb.checked) { updateModeLabel(); return; }
@@ -707,14 +813,14 @@ function showModal(title, message, onConfirm, onCancel) {
   document.getElementById('confirmModal').classList.add('show');
 }
 
-function closeModal() {
+function closeModal(confirmed) {
   document.getElementById('confirmModal').classList.remove('show');
-  if (window._onCancel) { window._onCancel(); window._onCancel = null; }
+  if (!confirmed && window._onCancel) { window._onCancel(); window._onCancel = null; }
   confirmCallback = null;
 }
 
 function confirmAction() {
-  closeModal();
+  closeModal(true);
   if (confirmCallback) { confirmCallback(); confirmCallback = null; }
 }
 

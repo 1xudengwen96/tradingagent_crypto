@@ -12,6 +12,7 @@
 """
 
 import argparse
+import json
 import logging
 import sys
 import os
@@ -33,6 +34,72 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("ccxt").setLevel(logging.WARNING)
 logging.getLogger("langchain").setLevel(logging.WARNING)
+
+
+def send_feishu_notification(symbol: str, decision_text: str, execution_result) -> None:
+    """Send AI analysis result to Feishu webhook as an interactive card."""
+    webhook_url = os.getenv("FEISHU_WEBHOOK_URL", "")
+    if not webhook_url:
+        return
+
+    # Parse execution status
+    status_emoji = "⏸️ 仅分析"
+    status_text = "未执行交易"
+    if execution_result is not None:
+        if execution_result.success:
+            order_ids = [o.get("id", "?") for o in execution_result.orders]
+            status_emoji = "✅ 已下单"
+            status_text = f"订单: {', '.join(order_ids)}"
+        else:
+            status_emoji = "❌ 下单失败"
+            status_text = execution_result.error or "未知错误"
+
+    # Build card payload
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {"tag": "plain_text", "content": f"📊 {symbol} 分析报告"},
+                "template": "blue",
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": decision_text[:1500],  # Feishu has message size limits
+                    },
+                },
+                {"tag": "hr"},
+                {
+                    "tag": "div",
+                    "fields": [
+                        {
+                            "is_short": True,
+                            "text": {"tag": "lark_md", "content": f"**执行状态**\n{status_emoji} {status_text}"},
+                        },
+                        {
+                            "is_short": True,
+                            "text": {
+                                "tag": "lark_md",
+                                "content": f"**时间**\n{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+                            },
+                        },
+                    ],
+                },
+            ],
+        },
+    }
+
+    try:
+        import requests
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            logger.info("Feishu notification sent for %s", symbol)
+        else:
+            logger.warning("Feishu webhook returned HTTP %d for %s", resp.status_code, symbol)
+    except Exception:
+        logger.exception("Failed to send Feishu notification for %s", symbol)
 
 
 def run_analysis(graph, symbols: list, auto_execute: bool):
@@ -61,6 +128,9 @@ def run_analysis(graph, symbols: list, auto_execute: bool):
                 else:
                     print(f"\n❌ Order placement FAILED: {execution_result.error}")
             print()
+
+            # Send Feishu notification
+            send_feishu_notification(symbol, decision_text, execution_result)
 
         except Exception:
             logger.exception("Unhandled error analysing %s", symbol)

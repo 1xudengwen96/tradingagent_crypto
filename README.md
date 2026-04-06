@@ -3,7 +3,7 @@
 > 基于 [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) v0.2.3 扩展开发  
 > 论文：[TradingAgents: Multi-Agents LLM Financial Trading Framework](https://arxiv.org/abs/2412.20138)
 
-将原始股票交易框架改造为专门交易 **BTC/USDT 和 ETH/USDT 永续合约**的 AI 系统，部署在 Bitget 交易所（支持沙盒/实盘）。
+将原始股票交易框架改造为专门交易 **BTC/ETH/SOL/XRP/DOGE/BNB/XAU/XAG 永续合约**的 AI 系统，部署在 Bitget 交易所（支持沙盒/实盘），并提供 Web 管理界面和飞书通知。
 
 ---
 
@@ -49,6 +49,10 @@ Bitget 行情数据
               │  市价单 + 止损   │
               │  止盈TP1 + TP2   │
               └─────────────────┘
+                       │
+              ┌────────▼────────┐
+              │  飞书 Webhook    │  ← 推送分析结果到飞书群
+              └─────────────────┘
 ```
 
 **决策输出格式示例：**
@@ -64,6 +68,20 @@ POSITION_SIZE: 20%
 
 ---
 
+## 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| 🤖 AI 多智能体分析 | 4 位分析师 → 研究员辩论 → 交易员 → 风险辩论 → 组合管理者 |
+| 📊 Web 管理界面 | 仪表盘、API 配置、交易设置、持仓查看、日志查看 |
+| 🔔 飞书通知 | 每次分析结果自动推送到飞书群（含决策 + 订单状态） |
+| 📈 合约交易 | 支持 BTC/ETH/SOL/XRP/DOGE/BNB/XAU/XAG 永续合约 |
+| 🎮 沙盒/实盘 | 模拟盘测试策略，确认后一键切换实盘 |
+| ⏰ 定时调度 | 可自定义分析间隔（1h/2h/4h/6h/12h/24h） |
+| 🏗️ 多 LLM 支持 | Anthropic Claude / OpenAI GPT / 通义千问 Qwen |
+
+---
+
 ## 技术栈
 
 | 层次 | 技术 |
@@ -76,7 +94,9 @@ POSITION_SIZE: 20%
 | 新闻数据 | CryptoPanic API |
 | 技术指标 | pandas 自计算（SMA/EMA/MACD/RSI/BB/ATR/VWMA） |
 | 定时调度 | APScheduler |
-| 包管理 | uv |
+| Web 后端 | FastAPI + Uvicorn |
+| Web 前端 | 单页应用（SSE 日志流） |
+| 消息通知 | 飞书 Webhook（Interactive Card） |
 | Python | ≥ 3.10 |
 
 ---
@@ -103,14 +123,14 @@ source ~/.local/bin/env
 uv sync
 
 # 安装加密货币额外依赖
-uv pip install ccxt apscheduler
+uv pip install ccxt apscheduler requests fastapi uvicorn
 ```
 
 或使用 pip：
 
 ```bash
 pip install -e .
-pip install ccxt apscheduler
+pip install ccxt apscheduler requests fastapi uvicorn
 ```
 
 ### 3. 配置环境变量
@@ -140,6 +160,8 @@ BITGET_SANDBOX=true            # 测试时保持 true
 
 ### 4. 运行
 
+#### 命令行模式
+
 ```bash
 # 推荐：首次运行，只分析不下单，看看 AI 决策质量
 uv run python crypto_main.py --once --no-execute
@@ -155,10 +177,59 @@ uv run python crypto_main.py
 
 # 每 2 小时运行一次
 uv run python crypto_main.py --interval-hours 2
-
-# 实盘模式（谨慎！请先设置 BITGET_SANDBOX=false）
-uv run python crypto_main.py --once
 ```
+
+#### Web UI 模式（推荐）
+
+```bash
+# 启动 Web 服务（默认 0.0.0.0:8000）
+python server.py
+
+# 自定义端口
+python server.py --port 9000
+```
+
+然后浏览器打开 `http://localhost:8000`，在 Web 界面中完成所有配置和管理。
+
+---
+
+## Web 界面说明
+
+Web 界面包含以下功能模块：
+
+| 模块 | 功能 |
+|------|------|
+| 📊 仪表盘 | 账户余额、可用余额、持仓数量、运行时间、快速启停 |
+| 🔑 API 配置 | Bitget API 密钥、LLM API 密钥、连接测试 |
+| ⚙️ 交易设置 | 交易模式（沙盒/实盘）、交易对多选、资金量、分析间隔、LLM 选择、飞书 Webhook |
+| 📈 持仓 | 当前持仓列表（方向、数量、开仓价、标记价、未实现盈亏、杠杆） |
+| 📝 日志 | 实时 SSE 日志流，支持按级别过滤和下载 |
+
+### 交易对多选
+
+在「交易设置」页面，通过多选下拉框选择要交易品种：
+- BTC/USDT（比特币）
+- ETH/USDT（以太坊）
+- SOL/USDT（Solana）
+- XRP/USDT（瑞波）
+- DOGE/USDT（狗狗币）
+- BNB/USDT（币安币）
+- XAU/USDT（黄金）
+- XAG/USDT（白银）
+
+### 飞书通知
+
+1. 在飞书群中添加自定义机器人，获取 Webhook URL
+2. 在「交易设置」页面填入飞书 Webhook URL
+3. 点击「测试飞书通知」验证连接
+4. 每次 AI 分析完成后，分析结果自动推送到飞书群
+
+### 分析间隔
+
+选择分析间隔后，**需要停止并重新启动 Bot** 才能生效。例如选择「每 1 小时」后：
+1. 点击「停止机器人」
+2. 点击「保存设置」
+3. 点击「启动机器人」
 
 ---
 
@@ -166,7 +237,8 @@ uv run python crypto_main.py --once
 
 ```
 tradingagent_crypto/
-├── crypto_main.py                           # 主入口（APScheduler 定时驱动）
+├── crypto_main.py                           # 主入口（APScheduler 定时驱动 + 飞书通知）
+├── server.py                                # Web 后端（FastAPI API + 前端服务）
 ├── .env.example                             # 环境变量配置模板
 ├── pyproject.toml                           # 项目依赖声明
 ├── CRYPTO_PROGRESS.md                       # 开发进度记录
@@ -206,6 +278,25 @@ tradingagent_crypto/
         ├── crypto_setup.py                  # LangGraph StateGraph 装配器
         └── crypto_trading_graph.py          # 主图类（CryptoTradingAgentsGraph）
 ```
+
+---
+
+## API 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/config` | 获取当前配置（密钥已脱敏） |
+| GET | `/api/config/full` | 获取完整配置（含密钥） |
+| POST | `/api/config` | 保存配置 |
+| POST | `/api/config/validate` | 测试 API 密钥连通性 |
+| POST | `/api/bot/start` | 启动 Bot |
+| POST | `/api/bot/stop` | 停止 Bot |
+| GET | `/api/bot/status` | 获取 Bot 状态 |
+| GET | `/api/account/balance` | 获取合约账户余额 |
+| GET | `/api/account/positions` | 获取当前持仓 |
+| GET | `/api/logs/tail` | 获取最近 N 行日志 |
+| GET | `/api/logs/stream` | SSE 实时日志流 |
+| POST | `/api/feishu/test` | 测试飞书 Webhook 连通性 |
 
 ---
 
@@ -272,6 +363,21 @@ CRYPTO_CONFIG = {
 
 ---
 
+## 飞书通知格式
+
+每次分析完成后，飞书群会收到一条交互式卡片消息：
+
+```
+📊 BTC/USDT:USDT 分析报告
+
+[AI 分析决策内容...]
+─────────────────
+执行状态：✅ 已下单 / ⏸️ 仅分析 / ❌ 下单失败
+时间：2026-04-06 12:00 UTC
+```
+
+---
+
 ## 运行日志
 
 每次分析结果自动保存到以下位置：
@@ -280,6 +386,7 @@ CRYPTO_CONFIG = {
 |------|------|
 | 终端 stdout | 实时进度 + 最终决策摘要 |
 | `crypto_trading.log` | 追加模式的完整日志 |
+| Web 界面「日志」页 | 实时 SSE 日志流 |
 | `crypto_results/<symbol>/logs/state_<datetime>.json` | 每个智能体的完整输出（便于调试审计）|
 
 ---
@@ -296,7 +403,13 @@ A: 无 API Key 时公共接口限速 60次/小时。建议在 [cryptopanic.com](
 A: 不同 ccxt 版本的 stop order 参数格式可能有差异。请检查 ccxt 版本（`ccxt.__version__`）并参考 [CCXT Bitget 文档](https://docs.ccxt.com/#/?id=bitget)。
 
 **Q: 如何切换到实盘？**  
-A: 将 `.env` 中的 `BITGET_SANDBOX=false`，并换用实盘 API Key，确保账户有足够 USDT 保证金。**请务必充分测试后再切换！**
+A: 在 Web 界面「交易设置」页面关闭沙盒开关，并换用实盘 API Key，确保账户有足够 USDT 保证金。**请务必充分测试后再切换！**
+
+**Q: 修改分析间隔后没有生效？**  
+A: 需要停止并重新启动 Bot 才会使用新的间隔。修改间隔 → 保存设置 → 停止 Bot → 启动 Bot。
+
+**Q: 飞书通知收不到？**  
+A: 检查 Webhook URL 是否正确，点击「测试飞书通知」按钮验证。确认飞书群的机器人权限已开启。
 
 ---
 

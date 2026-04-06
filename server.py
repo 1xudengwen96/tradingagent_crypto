@@ -76,6 +76,7 @@ DEFAULT_CONFIG = {
     "output_language": "Chinese",
     "margin_mode": "isolated",
     "default_leverage": 5,
+    "feishu_webhook_url": "",
 }
 
 # ---------------------------------------------------------------------------
@@ -164,6 +165,7 @@ class BotProcess:
         env["OPENAI_API_KEY"] = config.get("openai_api_key", "")
         env["DASHSCOPE_API_KEY"] = config.get("dashscope_api_key", "")
         env["CAPITAL_USDT"] = str(config.get("capital_usdt", 1000))
+        env["FEISHU_WEBHOOK_URL"] = config.get("feishu_webhook_url", "")
         env["DEBUG"] = "false"
 
         symbols = ",".join(config.get("crypto_symbols", ["BTC/USDT:USDT"]))
@@ -301,6 +303,7 @@ class ConfigRequest(BaseModel):
     output_language: str = "Chinese"
     margin_mode: str = "isolated"
     default_leverage: int = 5
+    feishu_webhook_url: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +373,7 @@ async def validate_config(req: ConfigRequest):
             import anthropic
             client = anthropic.Anthropic(api_key=req.anthropic_api_key)
             # Simple test: list models (lightweight call)
-            client.models.list(limit=1)
+            client.models.list()
             results["anthropic"] = {"ok": True, "message": "Connection successful"}
         except Exception as e:
             results["anthropic"] = {"ok": False, "message": f"Error: {e}"}
@@ -382,12 +385,27 @@ async def validate_config(req: ConfigRequest):
         try:
             import openai
             client = openai.OpenAI(api_key=req.openai_api_key)
-            client.models.list(limit=1)
+            client.models.list()
             results["openai"] = {"ok": True, "message": "Connection successful"}
         except Exception as e:
             results["openai"] = {"ok": False, "message": f"Error: {e}"}
     else:
         results["openai"] = {"ok": False, "message": "API key not provided"}
+
+    # Validate Qwen (DashScope) key
+    if req.dashscope_api_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                api_key=req.dashscope_api_key,
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            )
+            client.models.list()
+            results["qwen"] = {"ok": True, "message": "Connection successful"}
+        except Exception as e:
+            results["qwen"] = {"ok": False, "message": f"Error: {e}"}
+    else:
+        results["qwen"] = {"ok": False, "message": "API key not provided"}
 
     return {"success": True, "results": results}
 
@@ -543,6 +561,54 @@ async def stream_logs():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Feishu Webhook API
+# ---------------------------------------------------------------------------
+
+
+class FeishuTestRequest(BaseModel):
+    webhook_url: str
+
+
+@app.post("/api/feishu/test")
+async def test_feishu_webhook(req: FeishuTestRequest):
+    """Test Feishu webhook connectivity by sending a test message."""
+    import requests as req_lib
+
+    if not req.webhook_url:
+        raise HTTPException(status_code=400, detail="Webhook URL is required")
+
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {"tag": "plain_text", "content": "飞书通知测试"},
+                "template": "green",
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": "这是一条测试消息，说明飞书 Webhook 连接正常！",
+                    },
+                },
+            ],
+        },
+    }
+
+    try:
+        resp = req_lib.post(req.webhook_url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            result = resp.json()
+            if result.get("StatusCode") == 0 or result.get("code") == 0:
+                return {"success": True, "message": "飞书 Webhook 连接成功"}
+            return {"success": False, "message": f"飞书返回错误: {result}"}
+        raise HTTPException(status_code=500, detail=f"飞书返回 HTTP {resp.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"飞书 Webhook 测试失败: {e}")
 
 
 # ---------------------------------------------------------------------------

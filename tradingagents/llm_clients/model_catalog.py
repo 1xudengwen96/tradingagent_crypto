@@ -85,6 +85,20 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("Qwen3:latest (8B, local)", "qwen3:latest"),
         ],
     },
+    "qwen": {
+        "quick": [
+            ("Qwen Turbo - Fast, low latency", "qwen-turbo"),
+            ("Qwen Plus - Balanced capability and cost", "qwen-plus"),
+            ("Qwen2.5-7B-Instruct - Lightweight open-source", "qwen2.5-7b-instruct"),
+            ("Qwen2.5-32B-Instruct - Large open-source", "qwen2.5-32b-instruct"),
+        ],
+        "deep": [
+            ("Qwen Max - Flagship, strongest overall", "qwen-max"),
+            ("Qwen2.5-72B-Instruct - Most capable open-source", "qwen2.5-72b-instruct"),
+            ("Qwen Plus - Balanced capability and cost", "qwen-plus"),
+            ("Qwen Long - 1M token context window", "qwen-long"),
+        ],
+    },
 }
 
 

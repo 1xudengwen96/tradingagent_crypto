@@ -115,6 +115,8 @@ class CryptoTradingAgentsGraph:
         self.quick_thinking_llm = quick_client.get_llm()
 
         # ---- Memory stores -----------------------------------------------
+        # 日线铁三角精简版：只保留 Research Manager 和 Portfolio Manager 的记忆
+        # Bull/Bear/Trader 记忆保留对象但不接入图（方便未来重新启用）
         self.bull_memory = FinancialSituationMemory("crypto_bull_memory", self.config)
         self.bear_memory = FinancialSituationMemory("crypto_bear_memory", self.config)
         self.trader_memory = FinancialSituationMemory("crypto_trader_memory", self.config)
@@ -278,31 +280,38 @@ class CryptoTradingAgentsGraph:
     # ------------------------------------------------------------------
 
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
-        """Wire crypto data tools into LangGraph ToolNodes."""
+        """Wire crypto data tools into LangGraph ToolNodes.
+
+        铁三角精简版（日线专用）：
+        - market:       技术分析师工具（OHLCV/指标/Ticker/资金费率）
+        - fundamentals: 宏观分析师工具（Ticker/订单簿/未平仓量/资金费率）
+
+        social 和 news 工具节点保留注册但不接入图流程（方便未来重新启用）。
+        """
         return {
-            # Market analyst: price data + technical indicators
+            # Market analyst（技术面）: 价格数据 + 技术指标
             "market": ToolNode([
                 get_crypto_ohlcv,
                 get_crypto_indicators,
                 get_crypto_ticker,
                 get_funding_rate,
             ]),
-            # Sentiment analyst: news + funding rate (crowd positioning)
-            "social": ToolNode([
-                get_crypto_news,
-                get_funding_rate,
-            ]),
-            # News analyst: global macro + coin-specific news
-            "news": ToolNode([
-                get_crypto_global_news,
-                get_crypto_news,
-            ]),
-            # Onchain / microstructure analyst: order book, OI, funding
+            # Onchain / Macro analyst（宏观）: 市场微观结构
             "fundamentals": ToolNode([
                 get_crypto_ticker,
                 get_orderbook,
                 get_open_interest,
                 get_funding_rate,
+                get_crypto_global_news,   # 宏观新闻（BTC/市场整体趋势）
+            ]),
+            # 以下保留以备未来重新启用（当前不接入图流程）
+            "social": ToolNode([
+                get_crypto_news,
+                get_funding_rate,
+            ]),
+            "news": ToolNode([
+                get_crypto_global_news,
+                get_crypto_news,
             ]),
         }
 

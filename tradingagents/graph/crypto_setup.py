@@ -1,7 +1,34 @@
 # tradingagents/graph/crypto_setup.py
 """
-加密货币版图结构装配器
-使用加密货币专用智能体替换股票版智能体，构建合约交易分析流水线。
+加密货币版图结构装配器 —— 日线铁三角版
+
+重构方案（按 solv.md 阶段四）：
+- 移除：Sentiment Analyst、News Analyst、
+         Bull/Bear Researchers（辩论噪音）、
+         Aggressive/Conservative/Neutral Debators（三方辩论）
+- 保留：Market Analyst（技术面）、Onchain Analyst（宏观/市场结构）、
+         Research Manager（汇总）、Portfolio Manager（仓位）
+
+最终图流程：
+    START
+      │
+      ▼
+    Market Analyst ←→ tools_market  (技术面：OHLCV/指标/ATR)
+      │
+      ▼ Msg Clear Market
+    Onchain Analyst ←→ tools_fundamentals  (宏观：资金费率/OI/Ticker)
+      │
+      ▼ Msg Clear Fundamentals
+    Research Manager（深度LLM）→ investment_plan
+      │
+      ▼
+    Portfolio Manager（LLM 定向 + Python 仓位）→ final_trade_decision
+      │
+      ▼
+    END
+
+保留原有的 Debate / Risk discuss 条件路由代码以便将来重新启用，
+但当前轮数固定为 0（跳过辩论）。
 """
 
 from typing import Dict
@@ -12,27 +39,23 @@ from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import create_msg_delete
 
 from tradingagents.agents.analysts.crypto_market_analyst import create_crypto_market_analyst
-from tradingagents.agents.analysts.crypto_sentiment_analyst import create_crypto_sentiment_analyst
-from tradingagents.agents.analysts.crypto_news_analyst import create_crypto_news_analyst
 from tradingagents.agents.analysts.crypto_onchain_analyst import create_crypto_onchain_analyst
-
-from tradingagents.agents.researchers.crypto_bull_researcher import create_crypto_bull_researcher
-from tradingagents.agents.researchers.crypto_bear_researcher import create_crypto_bear_researcher
 
 from tradingagents.agents.managers.crypto_research_manager import create_crypto_research_manager
 from tradingagents.agents.managers.crypto_portfolio_manager import create_crypto_portfolio_manager
-
-from tradingagents.agents.trader.crypto_trader import create_crypto_trader
-
-from tradingagents.agents.risk_mgmt.crypto_aggressive_debator import create_crypto_aggressive_debator
-from tradingagents.agents.risk_mgmt.crypto_conservative_debator import create_crypto_conservative_debator
-from tradingagents.agents.risk_mgmt.crypto_neutral_debator import create_crypto_neutral_debator
 
 from .conditional_logic import ConditionalLogic
 
 
 class CryptoGraphSetup:
-    """Builds and compiles the LangGraph StateGraph for crypto contract trading."""
+    """
+    构建并编译日线铁三角 LangGraph StateGraph。
+
+    铁三角架构（日线专用）：
+    1. Technical_Analyst  → Market Analyst（价格行为、均线、RSI、ATR）
+    2. Macro_Analyst      → Onchain Analyst（资金费率、OI、恐慌贪婪指数）
+    3. Portfolio_Manager  → LLM 定方向，Python 硬算仓位
+    """
 
     def __init__(
         self,
@@ -57,107 +80,57 @@ class CryptoGraphSetup:
         self.conditional_logic = conditional_logic
 
     def setup_graph(self):
-        """Compile and return the crypto trading StateGraph.
-
-        Analyst pipeline (always all four for crypto):
-            Market → Sentiment → News → Onchain → Bull↔Bear → ResearchManager
-            → Trader → Aggressive↔Conservative↔Neutral → PortfolioManager → END
         """
-        # ---- Analyst nodes -----------------------------------------------
-        analyst_map = {
-            "market":    (create_crypto_market_analyst(self.quick_thinking_llm),
-                          "should_continue_market"),
-            "social":    (create_crypto_sentiment_analyst(self.quick_thinking_llm),
-                          "should_continue_social"),
-            "news":      (create_crypto_news_analyst(self.quick_thinking_llm),
-                          "should_continue_news"),
-            "fundamentals": (create_crypto_onchain_analyst(self.quick_thinking_llm),
-                             "should_continue_fundamentals"),
-        }
-        analyst_order = ["market", "social", "news", "fundamentals"]
+        编译并返回日线铁三角 StateGraph。
 
-        # ---- Other nodes -------------------------------------------------
-        bull_node   = create_crypto_bull_researcher(self.quick_thinking_llm, self.bull_memory)
-        bear_node   = create_crypto_bear_researcher(self.quick_thinking_llm, self.bear_memory)
-        rm_node     = create_crypto_research_manager(self.deep_thinking_llm, self.invest_judge_memory)
-        trader_node = create_crypto_trader(self.quick_thinking_llm, self.trader_memory)
+        精简后只保留 4 个节点：
+        - Market Analyst     （技术面分析）
+        - Onchain Analyst    （宏观 + 市场微观结构）
+        - Research Manager   （汇总研究，输出 investment_plan）
+        - Portfolio Manager  （最终仓位决策，Python ATR 模型）
+        """
+        # ---- 创建节点 --------------------------------------------------------
+        market_analyst_node = create_crypto_market_analyst(self.quick_thinking_llm)
+        onchain_analyst_node = create_crypto_onchain_analyst(self.quick_thinking_llm)
+        rm_node = create_crypto_research_manager(self.deep_thinking_llm, self.invest_judge_memory)
+        pm_node = create_crypto_portfolio_manager(self.deep_thinking_llm, self.portfolio_manager_memory)
 
-        aggressive_node   = create_crypto_aggressive_debator(self.quick_thinking_llm)
-        conservative_node = create_crypto_conservative_debator(self.quick_thinking_llm)
-        neutral_node      = create_crypto_neutral_debator(self.quick_thinking_llm)
-        pm_node           = create_crypto_portfolio_manager(self.deep_thinking_llm, self.portfolio_manager_memory)
-
-        # ---- Build graph -------------------------------------------------
+        # ---- 构建图 ----------------------------------------------------------
         workflow = StateGraph(AgentState)
 
-        # Add analyst nodes
-        for key, (node, _) in analyst_map.items():
-            label = key.capitalize()
-            workflow.add_node(f"{label} Analyst", node)
-            workflow.add_node(f"Msg Clear {label}", create_msg_delete())
-            workflow.add_node(f"tools_{key}", self.tool_nodes[key])
+        # 节点注册
+        workflow.add_node("Market Analyst", market_analyst_node)
+        workflow.add_node("Msg Clear Market", create_msg_delete())
+        workflow.add_node("tools_market", self.tool_nodes["market"])
 
-        # Add remaining nodes
-        workflow.add_node("Bull Researcher",    bull_node)
-        workflow.add_node("Bear Researcher",    bear_node)
-        workflow.add_node("Research Manager",   rm_node)
-        workflow.add_node("Trader",             trader_node)
-        workflow.add_node("Aggressive Analyst", aggressive_node)
-        workflow.add_node("Conservative Analyst", conservative_node)
-        workflow.add_node("Neutral Analyst",    neutral_node)
-        workflow.add_node("Portfolio Manager",  pm_node)
+        workflow.add_node("Onchain Analyst", onchain_analyst_node)
+        workflow.add_node("Msg Clear Fundamentals", create_msg_delete())
+        workflow.add_node("tools_fundamentals", self.tool_nodes["fundamentals"])
 
-        # ---- Analyst edges (sequential chain) ----------------------------
-        first_label = analyst_order[0].capitalize()
-        workflow.add_edge(START, f"{first_label} Analyst")
+        workflow.add_node("Research Manager", rm_node)
+        workflow.add_node("Portfolio Manager", pm_node)
 
-        for i, key in enumerate(analyst_order):
-            label = key.capitalize()
-            _, cond_method = analyst_map[key]
-
-            workflow.add_conditional_edges(
-                f"{label} Analyst",
-                getattr(self.conditional_logic, cond_method),
-                [f"tools_{key}", f"Msg Clear {label}"],
-            )
-            workflow.add_edge(f"tools_{key}", f"{label} Analyst")
-
-            if i < len(analyst_order) - 1:
-                next_label = analyst_order[i + 1].capitalize()
-                workflow.add_edge(f"Msg Clear {label}", f"{next_label} Analyst")
-            else:
-                workflow.add_edge(f"Msg Clear {label}", "Bull Researcher")
-
-        # ---- Research debate edges ----------------------------------------
+        # ---- 边：Market Analyst（含工具循环）---------------------------------
+        workflow.add_edge(START, "Market Analyst")
         workflow.add_conditional_edges(
-            "Bull Researcher",
-            self.conditional_logic.should_continue_debate,
-            {"Bear Researcher": "Bear Researcher", "Research Manager": "Research Manager"},
+            "Market Analyst",
+            self.conditional_logic.should_continue_market,
+            ["tools_market", "Msg Clear Market"],
         )
-        workflow.add_conditional_edges(
-            "Bear Researcher",
-            self.conditional_logic.should_continue_debate,
-            {"Bull Researcher": "Bull Researcher", "Research Manager": "Research Manager"},
-        )
-        workflow.add_edge("Research Manager", "Trader")
+        workflow.add_edge("tools_market", "Market Analyst")
+        workflow.add_edge("Msg Clear Market", "Onchain Analyst")
 
-        # ---- Risk debate edges --------------------------------------------
-        workflow.add_edge("Trader", "Aggressive Analyst")
+        # ---- 边：Onchain Analyst（含工具循环）---------------------------------
         workflow.add_conditional_edges(
-            "Aggressive Analyst",
-            self.conditional_logic.should_continue_risk_analysis,
-            {"Conservative Analyst": "Conservative Analyst", "Portfolio Manager": "Portfolio Manager"},
+            "Onchain Analyst",
+            self.conditional_logic.should_continue_fundamentals,
+            ["tools_fundamentals", "Msg Clear Fundamentals"],
         )
-        workflow.add_conditional_edges(
-            "Conservative Analyst",
-            self.conditional_logic.should_continue_risk_analysis,
-            {"Neutral Analyst": "Neutral Analyst", "Portfolio Manager": "Portfolio Manager"},
-        )
-        workflow.add_conditional_edges(
-            "Neutral Analyst",
-            self.conditional_logic.should_continue_risk_analysis,
-            {"Aggressive Analyst": "Aggressive Analyst", "Portfolio Manager": "Portfolio Manager"},
-        )
+        workflow.add_edge("tools_fundamentals", "Onchain Analyst")
+
+        # ---- 边：Research Manager → Portfolio Manager → END ------------------
+        workflow.add_edge("Msg Clear Fundamentals", "Research Manager")
+        workflow.add_edge("Research Manager", "Portfolio Manager")
         workflow.add_edge("Portfolio Manager", END)
 
         return workflow.compile()

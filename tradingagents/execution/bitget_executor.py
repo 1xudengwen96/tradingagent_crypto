@@ -46,6 +46,66 @@ class ExecutionResult:
 
 
 # ---------------------------------------------------------------------------
+# ATR-based SL/TP fallback (when LLM output lacks them)
+# ---------------------------------------------------------------------------
+
+def _compute_atr_sl_tp_from_exchange(
+    exchange,
+    symbol: str,
+    current_price: float,
+    side: str,  # "buy" (long) or "sell" (short)
+    timeframe: str = "1d",
+    atr_period: int = 14,
+    atr_multiplier: float = 1.5,
+    tp1_rr: float = 2.0,
+    tp2_rr: float = 3.5,
+) -> tuple[float, float, float]:
+    """
+    Fetch OHLCV from exchange, compute ATR, and derive SL/TP prices.
+
+    Returns:
+        (stop_loss, take_profit_1, take_profit_2)
+    """
+    try:
+        limit = atr_period + 20
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        if not ohlcv or len(ohlcv) < atr_period + 1:
+            raise ValueError(f"Insufficient OHLCV data for ATR ({len(ohlcv) if ohlcv else 0} bars)")
+
+        import pandas as pd
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
+
+        tr = pd.concat([
+            high - low,
+            (high - close.shift()).abs(),
+            (low - close.shift()).abs(),
+        ], axis=1).max(axis=1)
+        atr = tr.rolling(atr_period).mean().iloc[-1]
+        atr = float(atr)
+
+        sl_dist = atr_multiplier * atr
+        if side == "buy":
+            return (
+                round(current_price - sl_dist, 4),
+                round(current_price + tp1_rr * sl_dist, 4),
+                round(current_price + tp2_rr * sl_dist, 4),
+            )
+        else:
+            return (
+                round(current_price + sl_dist, 4),
+                round(current_price - tp1_rr * sl_dist, 4),
+                round(current_price - tp2_rr * sl_dist, 4),
+            )
+
+    except Exception as e:
+        logger.warning("ATR fallback failed (%s): %s", symbol, e)
+        return None, None, None
+
+
+# ---------------------------------------------------------------------------
 # Signal Parser
 # ---------------------------------------------------------------------------
 
@@ -319,7 +379,7 @@ class BitgetExecutor:
         symbol: str,
         capital_usdt: float,
     ) -> list:
-        """Set leverage, margin mode, compute size, place entry order."""
+        """Set leverage, margin mode, compute size, place entry order + mandatory SL/TP."""
         leverage = signal.leverage or self.default_leverage
         side = "buy" if signal.direction.startswith("LONG") else "sell"
 
@@ -328,7 +388,6 @@ class BitgetExecutor:
             self._exchange.set_margin_mode(self.margin_mode, symbol)
             logger.info("Set margin mode to %s for %s", self.margin_mode, symbol)
         except ccxt.ExchangeError as e:
-            # Some exchanges throw if mode is already set — log and continue
             logger.warning("set_margin_mode warning (may already be set): %s", e)
 
         # 2. Set leverage
@@ -343,7 +402,7 @@ class BitgetExecutor:
         current_price = ticker['last']
         notional_usdt = capital_usdt * signal.position_size_pct * leverage
         market = self._exchange.market(symbol)
-        contract_size = market.get('contractSize', 1.0)  # e.g. 0.001 BTC per contract
+        contract_size = market.get('contractSize', 1.0)
         amount_contracts = notional_usdt / (current_price * contract_size)
         amount_contracts = self._exchange.amount_to_precision(symbol, amount_contracts)
 
@@ -375,65 +434,87 @@ class BitgetExecutor:
         orders.append(order)
         logger.info("Entry order placed: %s", order.get('id'))
 
-        # 5. Place stop-loss order (opposite side, reduce-only)
-        if signal.stop_loss:
-            sl_side = "sell" if side == "buy" else "buy"
+        # 5. Ensure SL/TP — mandatory for all open positions
+        sl_price = signal.stop_loss
+        tp1_price = signal.take_profit_1
+        tp2_price = signal.take_profit_2
+
+        if sl_price is None or tp1_price is None:
+            logger.warning(
+                "SL/TP not provided (SL=%s, TP1=%s) — computing from ATR fallback",
+                sl_price, tp1_price,
+            )
+            atr_sl, atr_tp1, atr_tp2 = _compute_atr_sl_tp_from_exchange(
+                self._exchange, symbol, current_price, side,
+            )
+            if sl_price is None:
+                sl_price = atr_sl
+            if tp1_price is None:
+                tp1_price = atr_tp1
+            if tp2_price is None:
+                tp2_price = atr_tp2
+
+        # 6. Place stop-loss order (MANDATORY — opposite side, reduce-only)
+        sl_side = "sell" if side == "buy" else "buy"
+        if sl_price:
             try:
                 sl_order = self._exchange.create_order(
                     symbol=symbol,
                     type='stop',
                     side=sl_side,
                     amount=float(amount_contracts),
-                    price=signal.stop_loss,
+                    price=sl_price,
                     params={
-                        'stopPrice': signal.stop_loss,
+                        'stopPrice': sl_price,
                         'reduceOnly': True,
                         'tdMode': self.margin_mode,
                     },
                 )
                 orders.append(sl_order)
-                logger.info("Stop-loss order placed at %s: %s", signal.stop_loss, sl_order.get('id'))
+                logger.info("Stop-loss order placed at %s: %s", sl_price, sl_order.get('id'))
             except ccxt.ExchangeError as e:
-                logger.warning("Could not place stop-loss order: %s", e)
+                logger.error("CRITICAL: Could not place stop-loss order: %s", e)
+        else:
+            logger.error("CRITICAL: No stop-loss price available for %s — position unprotected!", symbol)
 
-        # 6. Place take-profit orders
+        # 7. Place take-profit orders
         tp_side = "sell" if side == "buy" else "buy"
         half_amount = float(amount_contracts) / 2.0
 
-        if signal.take_profit_1:
+        if tp1_price:
             try:
-                tp1_amount = half_amount if signal.take_profit_2 else float(amount_contracts)
+                tp1_amount = half_amount if tp2_price else float(amount_contracts)
                 tp1_order = self._exchange.create_order(
                     symbol=symbol,
                     type='limit',
                     side=tp_side,
                     amount=tp1_amount,
-                    price=signal.take_profit_1,
+                    price=tp1_price,
                     params={
                         'reduceOnly': True,
                         'tdMode': self.margin_mode,
                     },
                 )
                 orders.append(tp1_order)
-                logger.info("TP1 order placed at %s: %s", signal.take_profit_1, tp1_order.get('id'))
+                logger.info("TP1 order placed at %s: %s", tp1_price, tp1_order.get('id'))
             except ccxt.ExchangeError as e:
                 logger.warning("Could not place TP1 order: %s", e)
 
-        if signal.take_profit_2:
+        if tp2_price:
             try:
                 tp2_order = self._exchange.create_order(
                     symbol=symbol,
                     type='limit',
                     side=tp_side,
                     amount=half_amount,
-                    price=signal.take_profit_2,
+                    price=tp2_price,
                     params={
                         'reduceOnly': True,
                         'tdMode': self.margin_mode,
                     },
                 )
                 orders.append(tp2_order)
-                logger.info("TP2 order placed at %s: %s", signal.take_profit_2, tp2_order.get('id'))
+                logger.info("TP2 order placed at %s: %s", tp2_price, tp2_order.get('id'))
             except ccxt.ExchangeError as e:
                 logger.warning("Could not place TP2 order: %s", e)
 

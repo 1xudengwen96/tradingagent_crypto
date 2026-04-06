@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto Trading Bot</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg-primary:#0a0e17;--bg-secondary:#111827;--bg-card:#1a2235;
+--bg-input:#0f1623;--border:#2a3548;--text-primary:#e5e7eb;
+--text-secondary:#9ca3af;--accent:#3b82f6;--accent-glow:rgba(59,130,246,0.3);
+--success:#10b981;--warning:#f59e0b;--danger:#ef4444;
+--gradient-start:#1e3a5f;--gradient-end:#0f172a;
+}
+body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+background:var(--bg-primary);color:var(--text-primary);min-height:100vh;overflow-x:hidden}
+.header{display:flex;align-items:center;justify-content:space-between;
+padding:16px 32px;background:linear-gradient(135deg,var(--gradient-start),var(--gradient-end));
+border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.header-left{display:flex;align-items:center;gap:12px}
+.header-left h1{font-size:1.4rem;font-weight:700;
+background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#8b5cf6);
+display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
+.header-right{display:flex;align-items:center;gap:12px}
+.status-badge{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:0.8rem;font-weight:500}
+.status-badge.running{background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:var(--success)}
+.status-badge.stopped{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:var(--danger)}
+.status-badge.starting{background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:var(--warning)}
+.status-badge.stopping{background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:var(--warning)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.status-badge.running .status-dot{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.btn{padding:8px 20px;border-radius:8px;border:none;font-size:0.85rem;font-weight:500;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover:not(:disabled){background:#2563eb;box-shadow:0 0 15px var(--accent-glow)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover:not(:disabled){background:#dc2626}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover:not(:disabled){background:#059669}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text-primary)}
+.btn-outline:hover:not(:disabled){background:rgba(59,130,246,0.1);border-color:var(--accent)}
+.layout{display:flex;min-height:calc(100vh - 69px)}
+.sidebar{width:200px;background:var(--bg-secondary);border-right:1px solid var(--border);padding:12px 0;flex-shrink:0}
+.sidebar-item{display:flex;align-items:center;gap:10px;padding:12px 20px;cursor:pointer;color:var(--text-secondary);transition:all 0.2s;border-left:3px solid transparent;font-size:0.9rem}
+.sidebar-item:hover{color:var(--text-primary);background:rgba(59,130,246,0.05)}
+.sidebar-item.active{color:var(--accent);background:rgba(59,130,246,0.1);border-left-color:var(--accent);font-weight:500}
+.sidebar-item .icon{font-size:1.1rem;width:24px;text-align:center}
+.main{flex:1;padding:24px 32px;overflow-y:auto}
+.page{display:none}
+.page.active{display:block}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.card-title{font-size:0.95rem;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px;position:relative;overflow:hidden}
+.stat-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),#8b5cf6)}
+.stat-label{font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em}
+.stat-value{font-size:1.5rem;font-weight:700}
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:0.82rem;color:var(--text-secondary);margin-bottom:6px;font-weight:500}
+.form-input{width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:0.9rem;transition:border-color 0.2s}
+.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.form-select{width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:0.9rem;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239ca3af' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;cursor:pointer}
+.form-select:focus{outline:none;border-color:var(--accent)}
+.input-group{display:flex;gap:8px;align-items:center}
+.input-group .form-input{flex:1}
+.input-wrapper{position:relative}
+.input-wrapper .toggle-vis{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.85rem}
+.mode-toggle{display:flex;align-items:center;gap:16px;padding:16px 20px;background:var(--bg-input);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
+.mode-label{font-size:0.9rem;font-weight:500}
+.mode-label.active{color:var(--success)}
+.mode-label.inactive{color:var(--text-secondary)}
+.toggle{position:relative;width:48px;height:26px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;inset:0;background:#374151;border-radius:26px;transition:0.3s}
+.toggle .slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:0.3s}
+.toggle input:checked+.slider{background:var(--success)}
+.toggle input:checked+.slider::before{transform:translateX(22px)}
+.table-container{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:0.83rem}
+th{background:var(--bg-input);padding:10px 14px;text-align:left;font-weight:500;color:var(--text-secondary);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid rgba(42,53,72,0.5);white-space:nowrap}
+tr:hover td{background:rgba(59,130,246,0.03)}
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.75rem;font-weight:500}
+.badge-long{background:rgba(16,185,129,0.15);color:#34d399}
+.badge-short{background:rgba(239,68,68,0.15);color:#f87171}
+.badge-close{background:rgba(107,114,128,0.2);color:#9ca3af}
+.log-viewer{background:#0d1117;border:1px solid var(--border);border-radius:8px;padding:14px;font-family:'JetBrains Mono','Fira Code',monospace;font-size:0.76rem;line-height:1.7;max-height:450px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.log-info{color:#58a6ff}
+.log-warn{color:#d29922}
+.log-error{color:#f85149}
+.toast-container{position:fixed;top:80px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:8px;font-size:0.85rem;animation:slideIn 0.3s ease;min-width:250px;color:#fff}
+.toast-success{background:rgba(16,185,129,0.95)}
+.toast-error{background:rgba(239,68,68,0.95)}
+.toast-info{background:rgba(59,130,246,0.95)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:opacity 0.3s}
+.modal-overlay.show{opacity:1;pointer-events:auto}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:32px;max-width:420px;width:90%;text-align:center}
+.modal h3{margin-bottom:12px;font-size:1.1rem}
+.modal p{color:var(--text-secondary);font-size:0.9rem;margin-bottom:20px;line-height:1.5}
+.modal-buttons{display:flex;gap:12px;justify-content:center}
+.section{margin-bottom:20px}
+.section-title{font-size:0.82rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.section-title::after{content:"";flex:1;height:1px;background:var(--border)}
+.validate-results{margin-top:12px}
+.validate-item{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg-input);border-radius:8px;margin-bottom:6px;font-size:0.85rem}
+.validate-item .vstatus{font-weight:500}
+.validate-item .vstatus.ok{color:var(--success)}
+.validate-item .vstatus.fail{color:var(--danger)}
+.log-filters{display:flex;gap:6px;margin-bottom:10px}
+.log-filters .btn{padding:4px 12px;font-size:0.78rem}
+.log-filters .btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg-primary)}
+::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
+.activity-item{padding:10px 0;border-bottom:1px solid rgba(42,53,72,0.5);font-size:0.85rem;display:flex;justify-content:space-between}
+.activity-item:last-child{border-bottom:none}
+.activity-time{color:var(--text-secondary);font-size:0.78rem}
+@media(max-width:768px){.sidebar{display:none}.main{padding:16px}.stats-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <div class="logo">C</div>
+    <h1>Crypto Trading Bot</h1>
+  </div>
+  <div class="header-right">
+    <span id="modeBadge" class="status-badge stopped" style="font-size:0.75rem;padding:4px 10px;">虚拟盘</span>
+    <span id="statusBadge" class="status-badge stopped"><span class="status-dot"></span><span id="statusText">已停止</span></span>
+    <button id="btnStart" class="btn btn-success" onclick="startBot()">&#9654; 启动</button>
+    <button id="btnStop" class="btn btn-danger" onclick="stopBot()" disabled>&#9632; 停止</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-item active" onclick="showPage('dashboard',this)"><span class="icon">&#128202;</span>仪表盘</div>
+    <div class="sidebar-item" onclick="showPage('apikeys',this)"><span class="icon">&#128273;</span>API 配置</div>
+    <div class="sidebar-item" onclick="showPage('settings',this)"><span class="icon">&#9881;&#65039;</span>交易设置</div>
+    <div class="sidebar-item" onclick="showPage('positions',this)"><span class="icon">&#128200;</span>持仓</div>
+    <div class="sidebar-item" onclick="showPage('logs',this)"><span class="icon">&#128221;</span>日志</div>
+  </div>
+
+  <div class="main">
+    <!-- ========== Dashboard ========== -->
+    <div id="page-dashboard" class="page active">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">账户余额 (USDT)</div><div class="stat-value green" id="dashBalance">--</div></div>
+        <div class="stat-card"><div class="stat-label">可用余额</div><div class="stat-value blue" id="dashFree">--</div></div>
+        <div class="stat-card"><div class="stat-label">持仓数量</div><div class="stat-value" id="dashPositions" style="color:#a78bfa">--</div></div>
+        <div class="stat-card"><div class="stat-label">运行时间</div><div class="stat-value yellow" id="dashUptime">--</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#128302; 快速操作</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <button class="btn btn-success" onclick="startBot()" id="dashStartBtn">&#9654; 启动机器人</button>
+          <button class="btn btn-danger" onclick="stopBot()" id="dashStopBtn" disabled>&#9632; 停止机器人</button>
+          <button class="btn btn-outline" onclick="refreshDashboard()">&#128260; 刷新数据</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#128203; 最近活动</div>
+        <div id="activityList" style="max-height:300px;overflow-y:auto">
+          <div style="color:var(--text-secondary);font-size:0.85rem">加载中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== API Keys ========== -->
+    <div id="page-apikeys" class="page">
+      <div class="card">
+        <div class="card-title">&#128273; Bitget API 配置</div>
+        <div class="section">
+          <div class="form-group">
+            <label class="form-label">API Key</label>
+            <div class="input-wrapper">
+              <input type="password" id="cfg_bitget_key" class="form-input" placeholder="bg_xxxxxxxx...">
+              <button class="toggle-vis" onclick="toggleVis('cfg_bitget_key',this)">&#128065;</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Secret Key</label>
+            <div class="input-wrapper">
+              <input type="password" id="cfg_bitget_secret" class="form-input" placeholder="xxxxxxxx...">
+              <button class="toggle-vis" onclick="toggleVis('cfg_bitget_secret',this)">&#128065;</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Passphrase</label>
+            <div class="input-wrapper">
+              <input type="password" id="cfg_bitget_pass" class="form-input" placeholder="your_passphrase">
+              <button class="toggle-vis" onclick="toggleVis('cfg_bitget_pass',this)">&#128065;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#129302; LLM 提供商 API</div>
+        <div class="section">
+          <div class="form-group">
+            <label class="form-label">Anthropic API Key (Claude)</label>
+            <div class="input-wrapper">
+              <input type="password" id="cfg_anthropic_key" class="form-input" placeholder="sk-ant-xxxx...">
+              <button class="toggle-vis" onclick="toggleVis('cfg_anthropic_key',this)">&#128065;</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">OpenAI API Key</label>
+            <div class="input-wrapper">
+              <input type="password" id="cfg_openai_key" class="form-input" placeholder="sk-xxxx...">
+              <button class="toggle-vis" onclick="toggleVis('cfg_openai_key',this)">&#128065;</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">DashScope API Key (通义千问)</label>
+            <div class="input-wrapper">
+              <input type="password" id="cfg_dashscope_key" class="form-input" placeholder="sk-xxxx...">
+              <button class="toggle-vis" onclick="toggleVis('cfg_dashscope_key',this)">&#128065;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveConfig()">&#128190; 一键生效</button>
+        <button class="btn btn-outline" onclick="validateKeys()">&#128269; 测试连接</button>
+      </div>
+      <div id="validateResults" class="validate-results"></div>
+    </div>
+    <!-- ========== Settings ========== -->
+    <div id="page-settings" class="page">
+      <div class="card">
+        <div class="card-title">&#9888;&#65039; 交易模式</div>
+        <div class="mode-toggle">
+          <span class="mode-label active" id="modeDemoLabel">&#127918; 虚拟盘（Demo）</span>
+          <label class="toggle"><input type="checkbox" id="cfg_sandbox" checked onchange="onModeToggle(this)"><span class="slider"></span></label>
+          <span class="mode-label inactive" id="modeLiveLabel">&#128176; 实盘（Live）</span>
+        </div>
+        <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:-8px">虚拟盘用于测试策略，不会产生真实交易。切换到实盘前请确认策略已通过测试。</div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#9881;&#65039; 交易参数</div>
+        <div class="form-group">
+          <label class="form-label">交易对</label>
+          <input type="text" id="cfg_symbols" class="form-input" value="BTC/USDT:USDT,ETH/USDT:USDT" placeholder="逗号分隔，如 BTC/USDT:USDT,ETH/USDT:USDT">
+        </div>
+        <div class="form-group">
+          <label class="form-label">资金量 (USDT)</label>
+          <input type="number" id="cfg_capital" class="form-input" value="1000" min="10" step="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">分析间隔</label>
+          <select id="cfg_interval" class="form-select">
+            <option value="1">每 1 小时</option>
+            <option value="2">每 2 小时</option>
+            <option value="4" selected>每 4 小时</option>
+            <option value="6">每 6 小时</option>
+            <option value="12">每 12 小时</option>
+            <option value="24">每 24 小时</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">深度思考 LLM</label>
+          <select id="cfg_deep_provider" class="form-select">
+            <option value="anthropic" selected>Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT)</option>
+            <option value="qwen">通义千问 (Qwen)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">快速思考 LLM</label>
+          <select id="cfg_quick_provider" class="form-select">
+            <option value="anthropic" selected>Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT)</option>
+            <option value="qwen">通义千问 (Qwen)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">输出语言</label>
+          <select id="cfg_language" class="form-select">
+            <option value="Chinese" selected>中文</option>
+            <option value="English">English</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:12px">
+          <label class="toggle"><input type="checkbox" id="cfg_auto_execute" checked><span class="slider"></span></label>
+          <span style="font-size:0.9rem">自动执行交易（分析+下单）</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveConfig()">&#128190; 保存设置</button>
+    </div>
+
+    <!-- ========== Positions ========== -->
+    <div id="page-positions" class="page">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="font-size:1.1rem">&#128200; 当前持仓</h2>
+        <button class="btn btn-outline btn-sm" onclick="loadPositions()">&#128260; 刷新</button>
+      </div>
+      <div id="positionsContent">
+        <div class="table-container">
+          <table>
+            <thead><tr><th>交易对</th><th>方向</th><th>数量</th><th>开仓价</th><th>标记价</th><th>未实现盈亏</th><th>杠杆</th></tr></thead>
+            <tbody id="positionsBody"><tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:30px">加载中...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Logs ========== -->
+    <div id="page-logs" class="page">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <h2 style="font-size:1.1rem">&#128221; 运行日志</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="log-filters">
+            <button class="btn btn-outline btn-sm active" onclick="setLogFilter('all',this)">全部</button>
+            <button class="btn btn-outline btn-sm" onclick="setLogFilter('info',this)">INFO</button>
+            <button class="btn btn-outline btn-sm" onclick="setLogFilter('warn',this)">WARN</button>
+            <button class="btn btn-outline btn-sm" onclick="setLogFilter('error',this)">ERROR</button>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="downloadLogs()">&#128229; 下载</button>
+        </div>
+      </div>
+      <div class="log-viewer" id="logViewer"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h3 id="confirmTitle">&#9888;&#65039; 确认</h3>
+    <p id="confirmMessage">确定要执行此操作吗？</p>
+    <div class="modal-buttons">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" id="confirmBtn" onclick="confirmAction()">确认</button>
+    </div>
+  </div>
+</div>
+<script>
+// ==================== State ====================
+let currentConfig = {};
+let currentLogFilter = 'all';
+let sseConnection = null;
+let confirmCallback = null;
+let refreshTimer = null;
+
+// ==================== Init ====================
+document.addEventListener('DOMContentLoaded', function() {
+  loadConfig();
+  refreshDashboard();
+  startSSELog();
+  refreshTimer = setInterval(refreshDashboard, 30000);
+});
+
+// ==================== Navigation ====================
+function showPage(pageId, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
+  document.getElementById('page-' + pageId).classList.add('active');
+  if (el) el.classList.add('active');
+  if (pageId === 'positions') loadPositions();
+  if (pageId === 'logs') document.getElementById('logViewer').scrollTop = document.getElementById('logViewer').scrollHeight;
+}
+
+// ==================== Config ====================
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config/full');
+    const d = await r.json();
+    if (d.success) {
+      currentConfig = d.config;
+      const c = d.config;
+      document.getElementById('cfg_bitget_key').value = c.bitget_api_key || '';
+      document.getElementById('cfg_bitget_secret').value = c.bitget_secret || '';
+      document.getElementById('cfg_bitget_pass').value = c.bitget_passphrase || '';
+      document.getElementById('cfg_anthropic_key').value = c.anthropic_api_key || '';
+      document.getElementById('cfg_openai_key').value = c.openai_api_key || '';
+      document.getElementById('cfg_dashscope_key').value = c.dashscope_api_key || '';
+      document.getElementById('cfg_sandbox').checked = c.sandbox_mode !== false;
+      document.getElementById('cfg_symbols').value = (c.crypto_symbols || []).join(',');
+      document.getElementById('cfg_capital').value = c.capital_usdt || 1000;
+      document.getElementById('cfg_interval').value = c.interval_hours || 4;
+      document.getElementById('cfg_deep_provider').value = c.deep_think_llm_provider || 'anthropic';
+      document.getElementById('cfg_quick_provider').value = c.quick_think_llm_provider || 'anthropic';
+      document.getElementById('cfg_language').value = c.output_language || 'Chinese';
+      document.getElementById('cfg_auto_execute').checked = c.auto_execute !== false;
+      updateModeLabel();
+    }
+  } catch(e) { console.error('Load config failed', e); }
+}
+
+async function saveConfig() {
+  const data = {
+    bitget_api_key: document.getElementById('cfg_bitget_key').value,
+    bitget_secret: document.getElementById('cfg_bitget_secret').value,
+    bitget_passphrase: document.getElementById('cfg_bitget_pass').value,
+    sandbox_mode: document.getElementById('cfg_sandbox').checked,
+    anthropic_api_key: document.getElementById('cfg_anthropic_key').value,
+    openai_api_key: document.getElementById('cfg_openai_key').value,
+    dashscope_api_key: document.getElementById('cfg_dashscope_key').value,
+    crypto_symbols: document.getElementById('cfg_symbols').value.split(',').map(s => s.trim()).filter(s => s),
+    capital_usdt: parseFloat(document.getElementById('cfg_capital').value) || 1000,
+    interval_hours: parseFloat(document.getElementById('cfg_interval').value) || 4,
+    deep_think_llm_provider: document.getElementById('cfg_deep_provider').value,
+    quick_think_llm_provider: document.getElementById('cfg_quick_provider').value,
+    output_language: document.getElementById('cfg_language').value,
+    auto_execute: document.getElementById('cfg_auto_execute').checked,
+  };
+  try {
+    const r = await fetch('/api/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    const d = await r.json();
+    if (d.success) {
+      currentConfig = data;
+      updateModeLabel();
+      showToast('配置已保存并生效', 'success');
+    } else {
+      showToast('保存失败: ' + (d.detail || '未知错误'), 'error');
+    }
+  } catch(e) { showToast('保存失败: ' + e.message, 'error'); }
+}
+
+async function validateKeys() {
+  const data = {
+    bitget_api_key: document.getElementById('cfg_bitget_key').value,
+    bitget_secret: document.getElementById('cfg_bitget_secret').value,
+    bitget_passphrase: document.getElementById('cfg_bitget_pass').value,
+    sandbox_mode: document.getElementById('cfg_sandbox').checked,
+    anthropic_api_key: document.getElementById('cfg_anthropic_key').value,
+    openai_api_key: document.getElementById('cfg_openai_key').value,
+    dashscope_api_key: document.getElementById('cfg_dashscope_key').value,
+    crypto_symbols: ['BTC/USDT:USDT'], capital_usdt: 1000, interval_hours: 4,
+    auto_execute: true, output_language: 'Chinese',
+    deep_think_llm_provider: 'anthropic', deep_think_llm: 'claude-sonnet-4-5',
+    quick_think_llm_provider: 'anthropic', quick_think_llm: 'claude-haiku-4-5'
+  };
+  try {
+    const r = await fetch('/api/config/validate', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    const d = await r.json();
+    const container = document.getElementById('validateResults');
+    container.innerHTML = '';
+    if (d.results) {
+      for (const [key, val] of Object.entries(d.results)) {
+        const names = {bitget: 'Bitget', anthropic: 'Anthropic', openai: 'OpenAI'};
+        container.innerHTML += `<div class="validate-item"><span>${names[key] || key}</span><span class="vstatus ${val.ok ? 'ok' : 'fail'}">${val.ok ? '✓ 连接成功' : '✗ ' + val.message}</span></div>`;
+      }
+    }
+  } catch(e) { showToast('测试连接失败: ' + e.message, 'error'); }
+}
+
+function toggleVis(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁'; }
+}
+
+function onModeToggle(cb) {
+  if (cb.checked) { updateModeLabel(); return; }
+  // Switching to live trading — confirm
+  showModal('⚠️ 切换到实盘模式', '即将切换到真实交易模式，将使用真实资金进行交易。请确保您已充分测试策略并了解风险。\n\n确定要切换到实盘吗？', function() {
+    cb.checked = false;
+    updateModeLabel();
+  }, function() {
+    cb.checked = true;
+    updateModeLabel();
+  });
+}
+
+function updateModeLabel() {
+  const sandbox = document.getElementById('cfg_sandbox').checked;
+  const demo = document.getElementById('modeDemoLabel');
+  const live = document.getElementById('modeLiveLabel');
+  const badge = document.getElementById('modeBadge');
+  if (sandbox) {
+    demo.classList.add('active'); demo.classList.remove('inactive');
+    live.classList.remove('active'); live.classList.add('inactive');
+    badge.className = 'status-badge running'; badge.textContent = '虚拟盘';
+  } else {
+    live.classList.add('active'); live.classList.remove('inactive');
+    demo.classList.remove('active'); demo.classList.add('inactive');
+    badge.className = 'status-badge stopped'; badge.textContent = '实盘';
+  }
+}
+// ==================== Bot Control ====================
+async function startBot() {
+  try {
+    const r = await fetch('/api/bot/start', { method: 'POST' });
+    const d = await r.json();
+    if (d.status === 'running' || d.message?.includes('started')) {
+      showToast('机器人已启动', 'success');
+    } else if (d.status === 'running' && d.message?.includes('already')) {
+      showToast('机器人已在运行中', 'info');
+    }
+    refreshDashboard();
+  } catch(e) { showToast('启动失败: ' + e.message, 'error'); }
+}
+
+async function stopBot() {
+  try {
+    const r = await fetch('/api/bot/stop', { method: 'POST' });
+    const d = await r.json();
+    if (d.status === 'stopped') showToast('机器人已停止', 'success');
+    refreshDashboard();
+  } catch(e) { showToast('停止失败: ' + e.message, 'error'); }
+}
+
+// ==================== Dashboard ====================
+async function refreshDashboard() {
+  // Status
+  try {
+    const r = await fetch('/api/bot/status');
+    const d = await r.json();
+    updateBotStatus(d.status || 'stopped', d.uptime_seconds || 0);
+  } catch(e) {}
+
+  // Balance
+  try {
+    const r = await fetch('/api/account/balance');
+    const d = await r.json();
+    if (d.success) {
+      document.getElementById('dashBalance').textContent = d.total ? d.total.toFixed(2) : '--';
+      document.getElementById('dashFree').textContent = d.free ? d.free.toFixed(2) : '--';
+    }
+  } catch(e) {
+    document.getElementById('dashBalance').textContent = '--';
+    document.getElementById('dashFree').textContent = '--';
+  }
+
+  // Positions count
+  try {
+    const r = await fetch('/api/account/positions');
+    const d = await r.json();
+    const count = d.positions ? d.positions.length : 0;
+    document.getElementById('dashPositions').textContent = count;
+  } catch(e) {
+    document.getElementById('dashPositions').textContent = '--';
+  }
+
+  // Activity from logs
+  try {
+    const r = await fetch('/api/logs/tail?lines=50');
+    const d = await r.json();
+    if (d.logs) {
+      const activities = d.logs.filter(l => l.includes('Order') || l.includes('signal') || l.includes('Analysis') || l.includes('placed') || l.includes('FAILED'));
+      const list = document.getElementById('activityList');
+      if (activities.length > 0) {
+        list.innerHTML = activities.slice(-10).reverse().map(l => {
+          const time = l.substring(0, 19) || '';
+          const text = l.substring(25) || l;
+          return `<div class="activity-item"><span>${escapeHtml(text.substring(0, 80))}</span><span class="activity-time">${time}</span></div>`;
+        }).join('');
+      } else {
+        list.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;padding:10px">暂无活动记录</div>';
+      }
+    }
+  } catch(e) {}
+}
+
+function updateBotStatus(status, uptime) {
+  const badge = document.getElementById('statusBadge');
+  const text = document.getElementById('statusText');
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const dashStart = document.getElementById('dashStartBtn');
+  const dashStop = document.getElementById('dashStopBtn');
+
+  const labels = {running: '运行中', stopped: '已停止', starting: '启动中...', stopping: '停止中...', error: '错误'};
+  const classes = {running: 'running', stopped: 'stopped', starting: 'starting', stopping: 'stopping', error: 'stopped'};
+
+  badge.className = 'status-badge ' + (classes[status] || 'stopped');
+  text.textContent = labels[status] || '未知';
+
+  const isRunning = status === 'running' || status === 'starting';
+  btnStart.disabled = isRunning;
+  btnStop.disabled = !isRunning;
+  dashStart.disabled = isRunning;
+  dashStop.disabled = !isRunning;
+
+  // Uptime
+  if (uptime > 0) {
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const s = uptime % 60;
+    document.getElementById('dashUptime').textContent = (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's';
+  } else {
+    document.getElementById('dashUptime').textContent = '--';
+  }
+}
+
+// ==================== Positions ====================
+async function loadPositions() {
+  const tbody = document.getElementById('positionsBody');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:30px">加载中...</td></tr>';
+  try {
+    const r = await fetch('/api/account/positions');
+    const d = await r.json();
+    if (d.success && d.positions && d.positions.length > 0) {
+      tbody.innerHTML = d.positions.map(p => {
+        const sideClass = p.side === 'long' ? 'badge-long' : 'badge-short';
+        const pnlClass = p.unrealized_pnl >= 0 ? 'color:var(--success)' : 'color:var(--danger)';
+        const pnlSign = p.unrealized_pnl >= 0 ? '+' : '';
+        return `<tr>
+          <td>${escapeHtml(p.symbol)}</td>
+          <td><span class="badge ${sideClass}">${p.side === 'long' ? '做多' : '做空'}</span></td>
+          <td>${p.contracts}</td>
+          <td>${p.entry_price}</td>
+          <td>${p.mark_price}</td>
+          <td style="${pnlClass}">${pnlSign}${p.unrealized_pnl?.toFixed(2) || 0}</td>
+          <td>${p.leverage}x</td>
+        </tr>`;
+      }).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:30px">暂无持仓</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:30px">加载失败: ' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+// ==================== Logs ====================
+function startSSELog() {
+  if (sseConnection) { sseConnection.close(); }
+  sseConnection = new EventSource('/api/logs/stream');
+  sseConnection.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      appendLog(d.line, d.type);
+    } catch(err) {}
+  };
+  sseConnection.onerror = function() {
+    setTimeout(() => { startSSELog(); }, 5000);
+  };
+  // Also load recent logs
+  loadRecentLogs();
+}
+
+async function loadRecentLogs() {
+  try {
+    const r = await fetch('/api/logs/tail?lines=100');
+    const d = await r.json();
+    if (d.logs) {
+      d.logs.forEach(l => {
+        let type = 'info';
+        if (l.includes('[ERROR]') || l.includes('[CRITICAL]')) type = 'error';
+        else if (l.includes('[WARNING]') || l.includes('[WARN]')) type = 'warn';
+        appendLog(l, type, false);
+      });
+    }
+  } catch(e) {}
+}
+
+function appendLog(line, type, scroll) {
+  const viewer = document.getElementById('logViewer');
+  if (!viewer) return;
+  if (currentLogFilter !== 'all' && type !== currentLogFilter) return;
+  const div = document.createElement('div');
+  div.className = 'log-line log-' + (type || 'info');
+  div.textContent = line;
+  viewer.appendChild(div);
+  if (scroll !== false) {
+    viewer.scrollTop = viewer.scrollHeight;
+  }
+  // Limit displayed lines
+  while (viewer.children.length > 500) {
+    viewer.removeChild(viewer.firstChild);
+  }
+}
+
+function setLogFilter(filter, btn) {
+  currentLogFilter = filter;
+  document.querySelectorAll('.log-filters .btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+async function downloadLogs() {
+  try {
+    const r = await fetch('/api/logs/tail?lines=1000');
+    const d = await r.json();
+    if (d.logs) {
+      const blob = new Blob([d.logs.join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'crypto_trading_log.txt'; a.click();
+      URL.revokeObjectURL(url);
+      showToast('日志已下载', 'success');
+    }
+  } catch(e) { showToast('下载失败', 'error'); }
+}
+
+// ==================== Modal ====================
+function showModal(title, message, onConfirm, onCancel) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMessage').textContent = message;
+  confirmCallback = onConfirm;
+  window._onCancel = onCancel;
+  document.getElementById('confirmModal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('confirmModal').classList.remove('show');
+  if (window._onCancel) { window._onCancel(); window._onCancel = null; }
+  confirmCallback = null;
+}
+
+function confirmAction() {
+  closeModal();
+  if (confirmCallback) { confirmCallback(); confirmCallback = null; }
+}
+
+// ==================== Toast ====================
+function showToast(message, type) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-' + (type || 'info');
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3500);
+}
+
+// ==================== Utils ====================
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

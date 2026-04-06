@@ -32,6 +32,8 @@ dependencies = [
     "yfinance>=0.2.63",
     "ccxt>=4.5.0",
     "apscheduler>=3.10.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [project.scripts]

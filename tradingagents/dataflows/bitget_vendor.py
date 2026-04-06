@@ -13,6 +13,42 @@ from .config import get_config
 
 
 # ─────────────────────────────────────────────
+# 日线对齐工具（硬性 UTC 00:00 收盘保证）
+# ─────────────────────────────────────────────
+
+def _get_last_closed_daily_utc_ts() -> int:
+    """
+    返回上一根已完整收盘的日线 K 线的 UTC 00:00 开盘时间戳（毫秒）。
+
+    加密货币日线以 UTC 00:00 作为收盘时刻。
+    若当前时间为 UTC 14:00，则最后一根已收盘的日线是昨天 UTC 00:00 开盘的 K 线。
+    本函数确保永远不会把当天尚未走完的半截 K 线纳入计算。
+    """
+    now_utc = datetime.now(timezone.utc)
+    # 截断到今天 UTC 00:00 —— 这是当前未收盘 K 线的开盘时间
+    today_open = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    # 上一根已收盘日线的开盘时间
+    last_closed_open = today_open - timedelta(days=1)
+    return int(last_closed_open.timestamp() * 1000)
+
+
+def _filter_closed_daily_candles(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    过滤掉当前未收盘的日线 K 线（即 datetime >= 今天 UTC 00:00 的 K 线）。
+
+    Args:
+        df: 包含 datetime 列（UTC时区感知）的 OHLCV DataFrame
+
+    Returns:
+        只含已完整收盘 K 线的 DataFrame
+    """
+    now_utc = datetime.now(timezone.utc)
+    today_open = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    # 过滤：只保留开盘时间 < 今天 UTC 00:00 的 K 线
+    return df[df["datetime"] < today_open].copy()
+
+
+# ─────────────────────────────────────────────
 # 交易所实例（单例缓存）
 # ─────────────────────────────────────────────
 _exchange_cache: Optional[ccxt.bitget] = None
@@ -58,6 +94,10 @@ def get_crypto_ohlcv(symbol: str, timeframe: str = "1h", limit: int = 200) -> st
     """
     获取加密货币 OHLCV K 线数据。
 
+    对于日线（1d）周期，会自动过滤掉当前未收盘的 K 线，
+    确保所有计算基于 UTC 00:00 已完整收盘的历史数据，
+    消除"假收盘"信号（Fake Signals）。
+
     Args:
         symbol: 交易对，如 'BTC/USDT:USDT'（Bitget 永续合约格式）
         timeframe: K 线周期，如 '1m','5m','15m','1h','4h','1d'
@@ -68,7 +108,9 @@ def get_crypto_ohlcv(symbol: str, timeframe: str = "1h", limit: int = 200) -> st
     """
     try:
         exchange = get_bitget_exchange()
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        # 日线模式：多拉 1 根，以备过滤后仍有足够数量
+        fetch_limit = limit + 1 if timeframe in ("1d", "3d") else limit
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=fetch_limit)
 
         if not ohlcv:
             return f"No OHLCV data available for {symbol}"
@@ -81,8 +123,26 @@ def get_crypto_ohlcv(symbol: str, timeframe: str = "1h", limit: int = 200) -> st
         df = df[["datetime", "open", "high", "low", "close", "volume"]]
         df = df.sort_values("datetime").reset_index(drop=True)
 
+        # ── 日线专属：强制过滤未收盘 K 线 ──────────────────────────────
+        # 加密货币日线以 UTC 00:00 收盘。任何开盘时间 >= 今天 UTC 00:00
+        # 的 K 线都是未走完的半截，必须剔除。
+        if timeframe in ("1d", "3d"):
+            before_count = len(df)
+            df = _filter_closed_daily_candles(df)
+            after_count = len(df)
+            closed_note = (
+                f"[UTC-Aligned] Showing {after_count} closed daily candles "
+                f"(filtered {before_count - after_count} unclosed candle)\n"
+            )
+        else:
+            closed_note = ""
+
+        if df.empty:
+            return f"No closed daily candles available for {symbol} (all candles are still open)"
+
         result = f"OHLCV Data for {symbol} ({timeframe}, last {len(df)} candles)\n"
-        result += f"Latest price: {df['close'].iloc[-1]:.4f} USDT\n"
+        result += closed_note
+        result += f"Latest closed price: {df['close'].iloc[-1]:.4f} USDT\n"
         result += f"24h High: {df['high'].tail(24).max():.4f} | 24h Low: {df['low'].tail(24).min():.4f}\n"
         result += f"Latest Volume: {df['volume'].iloc[-1]:.2f}\n\n"
         result += df.tail(50).to_string(index=False)
@@ -100,6 +160,10 @@ def get_crypto_indicators(symbol: str, timeframe: str = "1h", limit: int = 200) 
     """
     计算加密货币技术指标（SMA/EMA/MACD/RSI/Bollinger/ATR/VWMA）。
 
+    对于日线（1d）周期，会自动过滤掉当前未收盘的 K 线，
+    确保 RSI、MACD 等所有指标只基于已确定收盘价计算，
+    避免产生假信号。
+
     Args:
         symbol: 交易对，如 'BTC/USDT:USDT'
         timeframe: K 线周期
@@ -110,7 +174,8 @@ def get_crypto_indicators(symbol: str, timeframe: str = "1h", limit: int = 200) 
     """
     try:
         exchange = get_bitget_exchange()
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        fetch_limit = limit + 1 if timeframe in ("1d", "3d") else limit
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=fetch_limit)
 
         if not ohlcv:
             return f"No data available for indicators calculation of {symbol}"
@@ -121,6 +186,17 @@ def get_crypto_indicators(symbol: str, timeframe: str = "1h", limit: int = 200) 
         )
         df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
         df = df.sort_values("datetime").reset_index(drop=True)
+
+        # ── 日线专属：强制过滤未收盘 K 线 ──────────────────────────────
+        # 技术指标（RSI/MACD 等）的最后一个值若基于半截 K 线会严重失真。
+        if timeframe in ("1d", "3d"):
+            df = _filter_closed_daily_candles(df)
+            closed_note = f"[UTC-Aligned: indicators based on {len(df)} closed daily candles only]\n"
+        else:
+            closed_note = ""
+
+        if df.empty:
+            return f"No closed candles available for indicator calculation of {symbol}"
 
         close = df["close"]
         high = df["high"]
@@ -175,7 +251,8 @@ def get_crypto_indicators(symbol: str, timeframe: str = "1h", limit: int = 200) 
             return "↑" if cur > pre else "↓"
 
         result = f"=== Technical Indicators for {symbol} ({timeframe}) ===\n"
-        result += f"Current Price: {fmt(current_price)} USDT\n\n"
+        result += closed_note
+        result += f"Last Closed Price: {fmt(current_price)} USDT\n\n"
 
         result += "--- Moving Averages ---\n"
         result += f"SMA-20:  {fmt(last['sma_20'])}  {trend(last['sma_20'], prev['sma_20'])}\n"
@@ -483,16 +560,28 @@ def get_crypto_news(coin: str, limit: int = 20) -> str:
 
 def get_crypto_global_news(limit: int = 20) -> str:
     """
-    获取全球加密货币市场宏观新闻。
+    宏观日历与黑天鹅预警 — 日线交易专用。
 
-    Args:
-        limit: 返回新闻条数
+    不再返回微观新闻，只筛选可能引发市场大幅波动的宏观事件：
+    1. 美联储（Fed）利率决议 / 鲍威尔讲话
+    2. 美国 CPI / 非农 / PCE 数据发布
+    3. 行业重大崩盘事件（交易所倒闭、监管禁令等）
 
-    Returns:
-        格式化字符串，包含宏观市场动态
+    如果当天有重磅宏观事件，交易系统应输出 "Neutral" 以规避波动。
     """
+    MACRO_KEYWORDS = [
+        "fed", "federal reserve", "interest rate", "jerome powell", "powell",
+        "cpi", "consumer price", "nonfarm", "non-farm", "payroll", "pce",
+        "inflation", "quantitative easing", "quantitative tightening",
+        "sec", "regulation", "ban", "crackdown", "lawsuit",
+        "bankruptcy", "collapse", "fraud", "ftx", "luna", "terra",
+        "blacklist", "sanction", "treasury",
+        "war", "geopolitical", "crisis",
+    ]
+
     try:
-        url = f"https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kind=news&limit={limit}"
+        # Fetch broader market news with higher limit for filtering
+        url = f"https://cryptopanic.com/api/v1/posts/?auth_token=free&public=true&kind=news&limit={limit * 3}"
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         data = resp.json()
@@ -501,8 +590,30 @@ def get_crypto_global_news(limit: int = 20) -> str:
         if not posts:
             return "No global crypto market news available"
 
-        result = f"=== Global Crypto Market News (Latest {len(posts)}) ===\n\n"
-        for i, post in enumerate(posts, 1):
+        # Filter for macro-impactful news only
+        macro_posts = []
+        for post in posts:
+            title = (post.get("title", "") or "").lower()
+            source = (post.get("source", {}).get("title", "") or "").lower()
+            if any(kw in title or kw in source for kw in MACRO_KEYWORDS):
+                macro_posts.append(post)
+            if len(macro_posts) >= limit:
+                break
+
+        if not macro_posts:
+            return (
+                "=== Macro Calendar & Black Swan Filter ===\n\n"
+                "[CLEAN] No macro-impactful crypto news detected.\n"
+                "No Fed decisions, CPI/NFP releases, or systemic risk events found.\n"
+                "Market conditions appear normal for daily swing trading.\n"
+            )
+
+        result = (
+            "=== Macro Calendar & Black Swan Warning ===\n"
+            "WARNING: These events may cause significant market volatility.\n"
+            "If any event is scheduled for today, consider staying NEUTRAL.\n\n"
+        )
+        for i, post in enumerate(macro_posts, 1):
             title = post.get("title", "No title")
             published = post.get("published_at", "")[:10]
             source = post.get("source", {}).get("title", "Unknown")
@@ -513,7 +624,13 @@ def get_crypto_global_news(limit: int = 20) -> str:
             result += f"{i}. [{published}] {title}\n"
             result += f"   Source: {source} | Related: {currencies}\n\n"
 
+        result += (
+            "\n=== Trading Guidance ===\n"
+            "If any of the above events are scheduled for today, "
+            "the system should default to NEUTRAL/CLOSE to avoid volatility risk.\n"
+        )
+
         return result
 
     except Exception as e:
-        return f"Global crypto news unavailable (API error: {str(e)})"
+        return f"Macro news unavailable (API error: {str(e)})"

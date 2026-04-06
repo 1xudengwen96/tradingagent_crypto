@@ -56,16 +56,17 @@ CRYPTO_CONFIG = {
     "margin_mode": "isolated",     # "isolated" | "cross"
     "default_leverage": 5,         # Fallback if parser fails
 
-    # Data settings
-    "timeframe": "1h",             # OHLCV candle timeframe
+    # Data settings — 日线专用
+    "timeframe": "1d",             # OHLCV candle timeframe (Daily for swing trading)
     "candle_limit": 200,           # Number of candles to fetch
 
     # Capital allocation
     "capital_usdt": 1000.0,        # Total account capital for position sizing
 
     # Scheduling (APScheduler cron-style)
-    "schedule_hour": "*/4",        # Run every 4 hours
-    "schedule_minute": "0",
+    # 建议 UTC 00:05 运行 — 日线已定格，用"既成事实"交易而非"盘中猜测"
+    "schedule_hour": "0",          # Run daily at midnight UTC
+    "schedule_minute": "5",
 
     # LLM configuration (dual-provider)
     # Deep thinking: Claude Sonnet for research manager and portfolio manager
@@ -87,4 +88,12 @@ CRYPTO_CONFIG = {
 
     # CryptoPanic API (optional — public API works without key but has rate limits)
     "cryptopanic_api_key": os.getenv("CRYPTOPANIC_API_KEY", ""),
+
+    # Qwen / DashScope API（阿里云通义千问）
+    # 设置 LLM_PROVIDER=qwen 后，系统将使用 DashScope 接口
+    # 对应环境变量：DASHSCOPE_API_KEY 或 QWEN_API_KEY
+    "dashscope_api_key": os.getenv("DASHSCOPE_API_KEY", "") or os.getenv("QWEN_API_KEY", ""),
+
+    # Google Gemini API
+    "google_api_key": os.getenv("GOOGLE_API_KEY", ""),
 }

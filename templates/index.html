@@ -653,22 +653,27 @@ async function refreshDashboard() {
     document.getElementById('dashPositions').textContent = '--';
   }
 
-  // Activity from logs
+  // Activity from trade history (persisted)
   try {
-    const r = await fetch('/api/logs/tail?lines=50');
+    const r = await fetch('/api/trades/history?limit=10');
     const d = await r.json();
-    if (d.logs) {
-      const activities = d.logs.filter(l => l.includes('Order') || l.includes('signal') || l.includes('Analysis') || l.includes('placed') || l.includes('FAILED'));
-      const list = document.getElementById('activityList');
-      if (activities.length > 0) {
-        list.innerHTML = activities.slice(-10).reverse().map(l => {
-          const time = l.substring(0, 19) || '';
-          const text = l.substring(25) || l;
-          return `<div class="activity-item"><span>${escapeHtml(text.substring(0, 80))}</span><span class="activity-time">${time}</span></div>`;
-        }).join('');
-      } else {
-        list.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;padding:10px">暂无活动记录</div>';
-      }
+    const list = document.getElementById('activityList');
+    if (d.success && d.trades && d.trades.length > 0) {
+      const actionLabels = {
+        'OPEN_LONG': '开多',
+        'OPEN_SHORT': '开空',
+        'CLOSE': '平仓',
+        'ANALYSIS': '分析'
+      };
+      list.innerHTML = d.trades.map(t => {
+        const time = t.timestamp ? t.timestamp.substring(0, 19).replace('T', ' ') : '';
+        const action = actionLabels[t.action] || t.action || '未知';
+        const symbol = t.symbol || '';
+        const detail = t.details ? (t.details.reason || t.details.message || JSON.stringify(t.details)) : '';
+        return `<div class="activity-item"><span><b>${action}</b> ${escapeHtml(symbol)} ${escapeHtml(detail ? '— ' + detail.substring(0, 60) : '')}</span><span class="activity-time">${time}</span></div>`;
+      }).join('');
+    } else {
+      list.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;padding:10px">暂无活动记录</div>';
     }
   } catch(e) {}
 }

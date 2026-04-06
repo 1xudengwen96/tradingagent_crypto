@@ -102,6 +102,40 @@ def send_feishu_notification(symbol: str, decision_text: str, execution_result) 
         logger.exception("Failed to send Feishu notification for %s", symbol)
 
 
+# ─── Trade history persistence ────────────────────────────────────────────
+
+_TRADE_HISTORY_FILE = os.path.join(os.path.expanduser("~"), ".tradingbot", "trade_history.json")
+
+
+def record_trade_history(action: str, symbol: str, details: dict) -> None:
+    """Append a trade record to the persistent history file."""
+    try:
+        history_file = _TRADE_HISTORY_FILE
+        history = []
+        if os.path.exists(history_file):
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                history = []
+
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "symbol": symbol,
+            "details": details,
+        }
+        history.append(entry)
+        if len(history) > 500:
+            history = history[-500:]
+
+        os.makedirs(os.path.dirname(history_file), exist_ok=True)
+        with open(history_file, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+    except Exception:
+        logger.exception("Failed to record trade history for %s", symbol)
+
+
 def run_analysis(graph, symbols: list, auto_execute: bool):
     """Run one full analysis cycle for all configured symbols."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -131,6 +165,28 @@ def run_analysis(graph, symbols: list, auto_execute: bool):
 
             # Send Feishu notification
             send_feishu_notification(symbol, decision_text, execution_result)
+
+            # Record to persistent trade history
+            if execution_result is not None:
+                if execution_result.success:
+                    for order in execution_result.orders:
+                        action = f"OPEN_{execution_result.signal.direction}" if execution_result.signal.direction in ("LONG", "LONG-LITE", "SHORT", "SHORT-LITE") else "CLOSE"
+                        record_trade_history(action, symbol, {
+                            "order_id": order.get("id"),
+                            "type": order.get("type"),
+                            "side": order.get("side"),
+                            "amount": order.get("amount"),
+                            "price": order.get("price"),
+                            "signal_direction": execution_result.signal.direction,
+                            "leverage": execution_result.signal.leverage,
+                        })
+                else:
+                    record_trade_history(execution_result.signal.direction if execution_result.signal else "UNKNOWN", symbol, {
+                        "status": "FAILED",
+                        "error": execution_result.error,
+                    })
+            else:
+                record_trade_history("ANALYSIS", symbol, {"decision": decision_text[:200]})
 
         except Exception:
             logger.exception("Unhandled error analysing %s", symbol)

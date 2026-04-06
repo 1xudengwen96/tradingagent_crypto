@@ -577,7 +577,7 @@ class BitgetExecutor:
     def fetch_account_balance(self) -> dict:
         """Return USDT balance summary."""
         try:
-            balance = self._exchange.fetch_balance({'type': 'swap'})
+            balance = self._exchange.fetch_balance({'type': 'mix'})
             usdt = balance.get('USDT', {})
             return {
                 'total': usdt.get('total', 0.0),

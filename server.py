@@ -38,6 +38,7 @@ PROJECT_DIR = Path(__file__).parent.resolve()
 CONFIG_DIR = Path.home() / ".tradingbot"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 LOG_FILE = PROJECT_DIR / "crypto_trading.log"
+HISTORY_FILE = CONFIG_DIR / "trade_history.json"
 
 # Ensure config directory exists
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -351,7 +352,7 @@ async def validate_config(req: ConfigRequest):
                 exchange.set_sandbox_mode(True)
 
             # Try fetching balance as connectivity test
-            balance = exchange.fetch_balance({"type": "swap"})
+            balance = exchange.fetch_balance({"type": "mix"})
             usdt = balance.get("USDT", {})
             results["bitget"] = {
                 "ok": True,
@@ -453,7 +454,7 @@ async def get_balance():
         if cfg.get("sandbox_mode", True):
             exchange.set_sandbox_mode(True)
 
-        balance = exchange.fetch_balance({"type": "swap"})
+        balance = exchange.fetch_balance({"type": "mix"})
         usdt = balance.get("USDT", {})
         return {
             "success": True,
@@ -498,6 +499,61 @@ async def get_positions():
         return {"success": True, "positions": open_positions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Trade History API
+# ---------------------------------------------------------------------------
+
+
+def load_trade_history() -> list:
+    """Load trade history from disk."""
+    if HISTORY_FILE.exists():
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            logger.warning("Failed to load trade history, using empty list")
+    return []
+
+
+def save_trade_history(history: list) -> None:
+    """Save trade history to disk."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2, ensure_ascii=False)
+
+
+@app.get("/api/trades/history")
+async def get_trade_history(limit: int = 50):
+    """Get trade history (persisted across page refreshes)."""
+    history = load_trade_history()
+    return {"success": True, "trades": history[-limit:][::-1]}
+
+
+class TradeRecord(BaseModel):
+    timestamp: str = ""
+    action: str = ""       # "OPEN_LONG" | "OPEN_SHORT" | "CLOSE" | "ANALYSIS"
+    symbol: str = ""
+    details: dict = {}
+
+
+@app.post("/api/trades/record")
+async def record_trade(req: TradeRecord):
+    """Record a trade entry to persistent history."""
+    history = load_trade_history()
+    entry = {
+        "timestamp": req.timestamp or datetime.now(timezone.utc).isoformat(),
+        "action": req.action,
+        "symbol": req.symbol,
+        "details": req.details,
+    }
+    history.append(entry)
+    # Keep last 500 entries
+    if len(history) > 500:
+        history = history[-500:]
+    save_trade_history(history)
+    return {"success": True, "message": "Trade recorded"}
 
 
 # ---------------------------------------------------------------------------

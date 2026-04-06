@@ -292,17 +292,22 @@ class BitgetExecutor:
         sandbox: bool = True,
         margin_mode: str = "isolated",   # "isolated" | "cross"
         default_leverage: int = 5,
+        account_type: str = "uma",       # "uma" (unified) | "classic"
     ):
         self.sandbox = sandbox
         self.margin_mode = margin_mode
         self.default_leverage = default_leverage
+        self.account_type = account_type
+
+        # Unified Master Account uses "swapUma", classic account uses "swap"
+        ccxt_product_type = "swapUma" if account_type == "uma" else "swap"
 
         self._exchange = ccxt.bitget({
             'apiKey': api_key,
             'secret': secret,
             'password': passphrase,
             'options': {
-                'defaultType': 'swap',   # perpetual futures
+                'defaultType': ccxt_product_type,
             },
         })
 
@@ -420,7 +425,7 @@ class BitgetExecutor:
                 type='market',
                 side=side,
                 amount=float(amount_contracts),
-                params={'tdMode': self.margin_mode},
+                params={'reduceOnly': False},
             )
         else:
             order = self._exchange.create_order(
@@ -429,7 +434,7 @@ class BitgetExecutor:
                 side=side,
                 amount=float(amount_contracts),
                 price=signal.entry_price,
-                params={'tdMode': self.margin_mode},
+                params={'reduceOnly': False},
             )
         orders.append(order)
         logger.info("Entry order placed: %s", order.get('id'))
@@ -467,7 +472,6 @@ class BitgetExecutor:
                     params={
                         'stopPrice': sl_price,
                         'reduceOnly': True,
-                        'tdMode': self.margin_mode,
                     },
                 )
                 orders.append(sl_order)
@@ -492,7 +496,6 @@ class BitgetExecutor:
                     price=tp1_price,
                     params={
                         'reduceOnly': True,
-                        'tdMode': self.margin_mode,
                     },
                 )
                 orders.append(tp1_order)
@@ -510,7 +513,6 @@ class BitgetExecutor:
                     price=tp2_price,
                     params={
                         'reduceOnly': True,
-                        'tdMode': self.margin_mode,
                     },
                 )
                 orders.append(tp2_order)
@@ -575,9 +577,10 @@ class BitgetExecutor:
             return []
 
     def fetch_account_balance(self) -> dict:
-        """Return USDT balance summary."""
+        """Return USDT balance from swap account."""
         try:
-            balance = self._exchange.fetch_balance({'type': 'mix'})
+            balance_type = "swapUma" if self.account_type == "uma" else "swap"
+            balance = self._exchange.fetch_balance({"type": balance_type})
             usdt = balance.get('USDT', {})
             return {
                 'total': usdt.get('total', 0.0),

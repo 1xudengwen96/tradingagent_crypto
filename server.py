@@ -62,6 +62,7 @@ DEFAULT_CONFIG = {
     "bitget_secret": "",
     "bitget_passphrase": "",
     "sandbox_mode": True,
+    "account_type": "uma",           # "uma" (unified) | "classic"
     "anthropic_api_key": "",
     "openai_api_key": "",
     "dashscope_api_key": "",
@@ -162,6 +163,7 @@ class BotProcess:
         env["BITGET_SECRET"] = config.get("bitget_secret", "")
         env["BITGET_PASSPHRASE"] = config.get("bitget_passphrase", "")
         env["BITGET_SANDBOX"] = "true" if config.get("sandbox_mode", True) else "false"
+        env["BITGET_ACCOUNT_TYPE"] = config.get("account_type", "uma")
         env["ANTHROPIC_API_KEY"] = config.get("anthropic_api_key", "")
         env["OPENAI_API_KEY"] = config.get("openai_api_key", "")
         env["DASHSCOPE_API_KEY"] = config.get("dashscope_api_key", "")
@@ -289,6 +291,7 @@ class ConfigRequest(BaseModel):
     bitget_secret: str = ""
     bitget_passphrase: str = ""
     sandbox_mode: bool = True
+    account_type: str = "uma"
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     dashscope_api_key: str = ""
@@ -334,6 +337,30 @@ async def save_config_endpoint(req: ConfigRequest):
     return {"success": True, "message": "Configuration saved successfully"}
 
 
+def _create_bitget_exchange(cfg: dict) -> ccxt.bitget:
+    """Create a Bitget exchange instance with proper account type."""
+    account_type = cfg.get("account_type", "uma")
+    product_type = "swapUma" if account_type == "uma" else "swap"
+    exchange = ccxt.bitget({
+        "apiKey": cfg.get("bitget_api_key", ""),
+        "secret": cfg.get("bitget_secret", ""),
+        "password": cfg.get("bitget_passphrase", ""),
+        "options": {"defaultType": product_type},
+    })
+    if cfg.get("sandbox_mode", True):
+        exchange.set_sandbox_mode(True)
+    return exchange
+
+
+def _fetch_bitget_balance(exchange, cfg: dict):
+    """Fetch Bitget USDT balance from swap account."""
+    account_type = cfg.get("account_type", "uma")
+    balance_type = "swapUma" if account_type == "uma" else "swap"
+    balance = exchange.fetch_balance({"type": balance_type})
+    usdt = balance.get("USDT", {})
+    return {"total": usdt.get("total", 0), "free": usdt.get("free", 0), "used": usdt.get("used", 0)}
+
+
 @app.post("/api/config/validate")
 async def validate_config(req: ConfigRequest):
     """Validate API key connectivity."""
@@ -342,23 +369,24 @@ async def validate_config(req: ConfigRequest):
     # Validate Bitget keys
     if req.bitget_api_key and req.bitget_secret and req.bitget_passphrase:
         try:
-            exchange = ccxt.bitget({
-                "apiKey": req.bitget_api_key,
-                "secret": req.bitget_secret,
-                "password": req.bitget_passphrase,
-                "options": {"defaultType": "swap"},
-            })
-            if req.sandbox_mode:
-                exchange.set_sandbox_mode(True)
+            cfg_dict = {
+                "bitget_api_key": req.bitget_api_key,
+                "bitget_secret": req.bitget_secret,
+                "bitget_passphrase": req.bitget_passphrase,
+                "sandbox_mode": req.sandbox_mode,
+                "account_type": req.account_type,
+            }
+            exchange = _create_bitget_exchange(cfg_dict)
 
             # Try fetching balance as connectivity test
-            balance = exchange.fetch_balance({"type": "mix"})
-            usdt = balance.get("USDT", {})
+            usdt = _fetch_bitget_balance(exchange, cfg_dict)
             results["bitget"] = {
                 "ok": True,
                 "message": "Connection successful",
-                "balance_usdt": usdt.get("total", 0),
+                "balance_usdt": usdt["total"],
             }
+        except ccxt.NotSupported as e:
+            results["bitget"] = {"ok": False, "message": f"Account type not supported: {e}"}
         except ccxt.AuthenticationError as e:
             results["bitget"] = {"ok": False, "message": f"Authentication failed: {e}"}
         except ccxt.NetworkError as e:
@@ -445,22 +473,13 @@ async def get_balance():
     """Get account balance from Bitget."""
     cfg = load_config()
     try:
-        exchange = ccxt.bitget({
-            "apiKey": cfg.get("bitget_api_key", ""),
-            "secret": cfg.get("bitget_secret", ""),
-            "password": cfg.get("bitget_passphrase", ""),
-            "options": {"defaultType": "swap"},
-        })
-        if cfg.get("sandbox_mode", True):
-            exchange.set_sandbox_mode(True)
-
-        balance = exchange.fetch_balance({"type": "mix"})
-        usdt = balance.get("USDT", {})
+        exchange = _create_bitget_exchange(cfg)
+        balance = _fetch_bitget_balance(exchange, cfg)
         return {
             "success": True,
-            "total": usdt.get("total", 0),
-            "free": usdt.get("free", 0),
-            "used": usdt.get("used", 0),
+            "total": balance["total"],
+            "free": balance["free"],
+            "used": balance["used"],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -471,15 +490,7 @@ async def get_positions():
     """Get open positions from Bitget."""
     cfg = load_config()
     try:
-        exchange = ccxt.bitget({
-            "apiKey": cfg.get("bitget_api_key", ""),
-            "secret": cfg.get("bitget_secret", ""),
-            "password": cfg.get("bitget_passphrase", ""),
-            "options": {"defaultType": "swap"},
-        })
-        if cfg.get("sandbox_mode", True):
-            exchange.set_sandbox_mode(True)
-
+        exchange = _create_bitget_exchange(cfg)
         positions = exchange.fetch_positions()
         open_positions = []
         for p in positions:

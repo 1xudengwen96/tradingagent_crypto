@@ -61,13 +61,17 @@ def get_bitget_exchange() -> ccxt.bitget:
         return _exchange_cache
 
     config = get_config()
+    # Unified Master Account uses "swapUma", classic account uses "swap"
+    account_type = config.get("account_type", "uma")
+    ccxt_product_type = "swapUma" if account_type == "uma" else "swap"
+
     exchange = ccxt.bitget(
         {
             "apiKey": config.get("bitget_api_key", ""),
             "secret": config.get("bitget_secret", ""),
             "password": config.get("bitget_passphrase", ""),
             "options": {
-                "defaultType": "swap",  # 永续合约
+                "defaultType": ccxt_product_type,
             },
             "enableRateLimit": True,
         }

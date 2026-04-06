@@ -158,6 +158,7 @@ class CryptoTradingAgentsGraph:
                 sandbox=self.config.get("sandbox_mode", True),
                 margin_mode=self.config.get("margin_mode", "isolated"),
                 default_leverage=self.config.get("default_leverage", 5),
+                account_type=self.config.get("account_type", "uma"),
             )
 
         # ---- State tracking ----------------------------------------------

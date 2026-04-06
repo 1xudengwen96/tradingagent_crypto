@@ -248,9 +248,13 @@ def main():
             balance.get("total", 0), balance.get("free", 0),
         )
 
+    # Run initial analysis immediately so users can verify AI is working
+    logger.info("Running initial analysis cycle...")
+    run_analysis(graph, symbols, auto_execute)
+    logger.info("Initial analysis complete.\n")
+
     if args.once:
-        # Single run
-        run_analysis(graph, symbols, auto_execute)
+        # Single run — already completed above
         return
 
     # ---- Scheduled mode --------------------------------------------------
@@ -274,8 +278,6 @@ def main():
         id="crypto_analysis",
         name=f"Crypto analysis every {interval_hours}h",
         replace_existing=True,
-        # Run immediately on startup, then on schedule
-        next_run_time=datetime.now(timezone.utc),
     )
 
     logger.info(

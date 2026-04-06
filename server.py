@@ -39,6 +39,7 @@ CONFIG_DIR = Path.home() / ".tradingbot"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 LOG_FILE = PROJECT_DIR / "crypto_trading.log"
 HISTORY_FILE = CONFIG_DIR / "trade_history.json"
+BOT_STATE_FILE = CONFIG_DIR / "bot_state.json"
 
 # Ensure config directory exists
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -144,9 +145,81 @@ class BotProcess:
         self.status = "stopped"  # stopped | starting | running | stopping | error
         self.error_message: Optional[str] = None
         self._monitor_task: Optional[asyncio.Task] = None
+        self._restore_state()
+
+    def _save_state(self) -> None:
+        """Persist bot status to disk."""
+        state = {
+            "status": self.status,
+            "start_time": self.start_time,
+            "pid": self.process.pid if self.process else None,
+            "error_message": self.error_message,
+        }
+        try:
+            with open(BOT_STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(state, f)
+        except IOError:
+            logger.warning("Failed to save bot state")
+
+    def _restore_state(self) -> None:
+        """Restore bot status from disk on server restart."""
+        if not BOT_STATE_FILE.exists():
+            return
+        try:
+            with open(BOT_STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            prev_status = state.get("status", "stopped")
+            prev_start = state.get("start_time")
+            pid = state.get("pid")
+
+            if prev_status in ("running", "starting") and pid:
+                # Check if the process is still alive
+                try:
+                    os.kill(pid, 0)  # signal 0 = check existence
+                    # Process is alive — report as running but don't reattach
+                    # (we can't re-attach stdout/stderr pipes)
+                    self.status = "running"
+                    self.start_time = prev_start
+                    # Create a lightweight handle for stop functionality
+                    self.process = None  # can't reattach pipes, use kill in stop
+                    logger.info("Restored: bot process still alive (PID=%d)", pid)
+                    return
+                except (ProcessLookupError, OSError):
+                    pass
+
+            # Process is dead or was not running — reset
+            self.status = "stopped"
+            self.start_time = None
+            self.error_message = None
+        except (json.JSONDecodeError, IOError):
+            logger.warning("Failed to restore bot state")
+
+    @property
+    def _restored_pid(self) -> Optional[int]:
+        """Get PID from restored state when process object is None."""
+        if self.process and self.process.pid:
+            return self.process.pid
+        if self.status == "running" and not self.process:
+            # Restored state — read PID from saved state file
+            if BOT_STATE_FILE.exists():
+                try:
+                    with open(BOT_STATE_FILE, "r", encoding="utf-8") as f:
+                        state = json.load(f)
+                    return state.get("pid")
+                except (json.JSONDecodeError, IOError):
+                    pass
+        return None
 
     @property
     def is_running(self) -> bool:
+        pid = self._restored_pid
+        if self.status == "running" and pid:
+            # Verify process is actually alive
+            try:
+                os.kill(pid, 0)
+                return True
+            except (ProcessLookupError, OSError):
+                return False
         return self.process is not None and self.process.returncode is None
 
     async def start(self, config: dict) -> dict:
@@ -156,6 +229,7 @@ class BotProcess:
 
         self.status = "starting"
         self.error_message = None
+        self._save_state()
 
         # Build environment from config
         env = os.environ.copy()
@@ -194,6 +268,7 @@ class BotProcess:
             )
             self.start_time = time.time()
             self.status = "running"
+            self._save_state()
             logger.info(
                 "Bot started (PID=%d, sandbox=%s, symbols=%s)",
                 self.process.pid,
@@ -207,12 +282,13 @@ class BotProcess:
             return {
                 "status": "running",
                 "pid": self.process.pid,
-                "message": "Bot started successfully",
+                "message": "Bot started successfully, initial analysis in progress",
             }
 
         except Exception as e:
             self.status = "error"
             self.error_message = str(e)
+            self._save_state()
             logger.exception("Failed to start bot")
             raise HTTPException(status_code=500, detail=f"Failed to start bot: {e}")
 
@@ -220,26 +296,46 @@ class BotProcess:
         """Stop the trading bot gracefully."""
         if not self.is_running:
             self.status = "stopped"
+            self.process = None
+            self.start_time = None
+            self._save_state()
             return {"status": "stopped", "message": "Bot is not running"}
 
         self.status = "stopping"
+        self._save_state()
         try:
-            # Send SIGTERM for graceful shutdown
-            self.process.terminate()
-            try:
-                await asyncio.wait_for(self.process.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
-                # Force kill if not responding
-                self.process.kill()
-                await self.process.wait()
-        except ProcessLookupError:
-            pass  # Process already exited
+            if self.process:
+                # Normal case — we have a process handle
+                self.process.terminate()
+                try:
+                    await asyncio.wait_for(self.process.wait(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    self.process.kill()
+                    await self.process.wait()
+            else:
+                # Restored state — kill by PID
+                pid = self._restored_pid
+                if pid:
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                        # Wait for process to exit
+                        for _ in range(20):
+                            await asyncio.sleep(0.5)
+                            try:
+                                os.kill(pid, 0)
+                            except ProcessLookupError:
+                                break
+                        else:
+                            os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass  # Already exited
         except Exception as e:
             logger.warning("Error stopping bot: %s", e)
 
         self.status = "stopped"
         self.process = None
         self.start_time = None
+        self._save_state()
         logger.info("Bot stopped")
         return {"status": "stopped", "message": "Bot stopped successfully"}
 
@@ -250,13 +346,20 @@ class BotProcess:
             if self.status == "running":
                 self.status = "error"
                 self.error_message = f"Process exited with code {self.process.returncode}"
+                self._save_state()
                 logger.warning("Bot process exited unexpectedly (code=%d)", self.process.returncode)
 
     def get_status(self) -> dict:
         """Get current bot status."""
+        # Verify running state is accurate
+        if self.status == "running" and not self.is_running:
+            self.status = "error"
+            self.error_message = "Process no longer exists"
+            self._save_state()
+
         result = {
             "status": self.status,
-            "pid": self.process.pid if self.process else None,
+            "pid": self._restored_pid,
             "uptime_seconds": 0,
         }
         if self.start_time and self.status == "running":

@@ -292,23 +292,25 @@ class BitgetExecutor:
         sandbox: bool = True,
         margin_mode: str = "isolated",   # "isolated" | "cross"
         default_leverage: int = 5,
-        account_type: str = "uma",       # "uma" (unified) | "classic"
+        account_type: str = "classic",    # "classic" | "uma" (unified)
     ):
         self.sandbox = sandbox
         self.margin_mode = margin_mode
         self.default_leverage = default_leverage
         self.account_type = account_type
 
-        # Unified Master Account uses "swapUma", classic account uses "swap"
-        ccxt_product_type = "swapUma" if account_type == "uma" else "swap"
+        # Classic account uses 'swap' defaultType; unified account (UTA) adds uta option
+        ccxt_options = {
+            'defaultType': 'swap',
+        }
+        if account_type == "uma":
+            ccxt_options['uta'] = True
 
         self._exchange = ccxt.bitget({
             'apiKey': api_key,
             'secret': secret,
             'password': passphrase,
-            'options': {
-                'defaultType': ccxt_product_type,
-            },
+            'options': ccxt_options,
         })
 
         if sandbox:
@@ -579,8 +581,7 @@ class BitgetExecutor:
     def fetch_account_balance(self) -> dict:
         """Return USDT balance from swap account."""
         try:
-            balance_type = "swapUma" if self.account_type == "uma" else "swap"
-            balance = self._exchange.fetch_balance({"type": balance_type})
+            balance = self._exchange.fetch_balance()
             usdt = balance.get('USDT', {})
             return {
                 'total': usdt.get('total', 0.0),

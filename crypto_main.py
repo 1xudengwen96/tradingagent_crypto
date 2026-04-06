@@ -201,7 +201,7 @@ def build_graph(auto_execute: bool, symbols: list):
     config_override = {
         "crypto_symbols": symbols,
         "sandbox_mode": os.getenv("BITGET_SANDBOX", "true").lower() != "false",
-        "account_type": os.getenv("BITGET_ACCOUNT_TYPE", "uma"),
+        "account_type": os.getenv("BITGET_ACCOUNT_TYPE", "classic"),
         "capital_usdt": float(os.getenv("CAPITAL_USDT", CRYPTO_CONFIG["capital_usdt"])),
     }
 

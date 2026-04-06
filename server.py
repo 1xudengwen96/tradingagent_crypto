@@ -62,7 +62,7 @@ DEFAULT_CONFIG = {
     "bitget_secret": "",
     "bitget_passphrase": "",
     "sandbox_mode": True,
-    "account_type": "uma",           # "uma" (unified) | "classic"
+    "account_type": "classic",       # "classic" | "uma" (unified)
     "anthropic_api_key": "",
     "openai_api_key": "",
     "dashscope_api_key": "",
@@ -163,7 +163,7 @@ class BotProcess:
         env["BITGET_SECRET"] = config.get("bitget_secret", "")
         env["BITGET_PASSPHRASE"] = config.get("bitget_passphrase", "")
         env["BITGET_SANDBOX"] = "true" if config.get("sandbox_mode", True) else "false"
-        env["BITGET_ACCOUNT_TYPE"] = config.get("account_type", "uma")
+        env["BITGET_ACCOUNT_TYPE"] = config.get("account_type", "classic")
         env["ANTHROPIC_API_KEY"] = config.get("anthropic_api_key", "")
         env["OPENAI_API_KEY"] = config.get("openai_api_key", "")
         env["DASHSCOPE_API_KEY"] = config.get("dashscope_api_key", "")
@@ -291,7 +291,7 @@ class ConfigRequest(BaseModel):
     bitget_secret: str = ""
     bitget_passphrase: str = ""
     sandbox_mode: bool = True
-    account_type: str = "uma"
+    account_type: str = "classic"
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     dashscope_api_key: str = ""
@@ -339,13 +339,15 @@ async def save_config_endpoint(req: ConfigRequest):
 
 def _create_bitget_exchange(cfg: dict) -> ccxt.bitget:
     """Create a Bitget exchange instance with proper account type."""
-    account_type = cfg.get("account_type", "uma")
-    product_type = "swapUma" if account_type == "uma" else "swap"
+    account_type = cfg.get("account_type", "classic")
+    ccxt_options = {"defaultType": "swap"}
+    if account_type == "uma":
+        ccxt_options["uta"] = True
     exchange = ccxt.bitget({
         "apiKey": cfg.get("bitget_api_key", ""),
         "secret": cfg.get("bitget_secret", ""),
         "password": cfg.get("bitget_passphrase", ""),
-        "options": {"defaultType": product_type},
+        "options": ccxt_options,
     })
     if cfg.get("sandbox_mode", True):
         exchange.set_sandbox_mode(True)
@@ -354,9 +356,7 @@ def _create_bitget_exchange(cfg: dict) -> ccxt.bitget:
 
 def _fetch_bitget_balance(exchange, cfg: dict):
     """Fetch Bitget USDT balance from swap account."""
-    account_type = cfg.get("account_type", "uma")
-    balance_type = "swapUma" if account_type == "uma" else "swap"
-    balance = exchange.fetch_balance({"type": balance_type})
+    balance = exchange.fetch_balance()
     usdt = balance.get("USDT", {})
     return {"total": usdt.get("total", 0), "free": usdt.get("free", 0), "used": usdt.get("used", 0)}
 

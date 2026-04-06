@@ -53,6 +53,7 @@ CRYPTO_CONFIG = {
 
     # Exchange settings
     "sandbox_mode": True,          # Set False for live trading
+    "account_type": "classic",     # "classic" | "uma" (unified)
     "margin_mode": "isolated",     # "isolated" | "cross"
     "default_leverage": 5,         # Fallback if parser fails
 

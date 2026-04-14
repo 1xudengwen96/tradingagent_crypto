@@ -97,18 +97,18 @@ class CryptoTradingAgentsGraph:
             exist_ok=True,
         )
 
-        # ---- LLM setup (dual-provider) -----------------------------------
-        # Deep thinking: Claude Opus (research manager, portfolio manager)
+        # ---- LLM setup (仅使用通义千问Qwen) -----------------------------------
+        # Deep thinking: Qwen-Max (research manager, portfolio manager)
         deep_client = create_llm_client(
-            provider=self.config.get("deep_think_llm_provider", "anthropic"),
-            model=self.config.get("deep_think_llm", "claude-opus-4-6"),
-            api_key=self.config.get("anthropic_api_key") or None,
+            provider=self.config.get("deep_think_llm_provider", "qwen"),
+            model=self.config.get("deep_think_llm", "qwen-max"),
+            api_key=self.config.get("dashscope_api_key") or None,
         )
-        # Quick thinking: GPT-mini (analysts, trader, debaters)
+        # Quick thinking: Qwen-Plus (analysts, trader, debaters)
         quick_client = create_llm_client(
-            provider=self.config.get("quick_think_llm_provider", "openai"),
-            model=self.config.get("quick_think_llm", "gpt-4o-mini"),
-            api_key=self.config.get("openai_api_key") or None,
+            provider=self.config.get("quick_think_llm_provider", "qwen"),
+            model=self.config.get("quick_think_llm", "qwen-plus"),
+            api_key=self.config.get("dashscope_api_key") or None,
         )
 
         self.deep_thinking_llm = deep_client.get_llm()
@@ -173,7 +173,7 @@ class CryptoTradingAgentsGraph:
     # Public API
     # ------------------------------------------------------------------
 
-    def propagate(self, symbol: str, trade_date: Optional[str] = None) -> tuple:
+    def propagate(self, symbol: str, trade_date: Optional[str] = None, timeframe: Optional[str] = None) -> tuple:
         """Run the full multi-agent analysis pipeline for one symbol.
 
         Parameters
@@ -182,6 +182,8 @@ class CryptoTradingAgentsGraph:
             Trading pair, e.g. "BTC/USDT:USDT"
         trade_date : str, optional
             ISO date string. Defaults to today (UTC).
+        timeframe : str, optional
+            Candle timeframe: '4h' or '1d'. Defaults to config value.
 
         Returns
         -------
@@ -189,10 +191,18 @@ class CryptoTradingAgentsGraph:
         """
         if trade_date is None:
             trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        if timeframe is None:
+            timeframe = self.config.get("timeframe", "4h")
 
-        init_state = self.propagator.create_initial_state(symbol, trade_date)
+        logger.info("="*50)
+        logger.info("Starting analysis pipeline for %s (timeframe=%s)", symbol, timeframe)
+        logger.info("="*50)
+
+        logger.info("📊 Creating initial state with symbol=%s, timeframe=%s", symbol, timeframe)
+        init_state = self.propagator.create_initial_state(symbol, trade_date, timeframe)
         args = self.propagator.get_graph_args()
 
+        logger.info("🔄 Invoking multi-agent graph (this may take a while)...")
         if self.debug:
             trace = []
             for chunk in self.graph.stream(init_state, **args):
@@ -207,7 +217,8 @@ class CryptoTradingAgentsGraph:
         self._log_state(symbol, trade_date, final_state)
 
         decision_text = final_state.get("final_trade_decision", "")
-        logger.info("Analysis complete for %s | decision preview: %.120s", symbol, decision_text)
+        logger.info("✅ Analysis complete for %s", symbol)
+        logger.info("📋 Decision preview: %.150s", decision_text)
 
         return final_state, decision_text
 
@@ -251,14 +262,20 @@ class CryptoTradingAgentsGraph:
 
         return result
 
-    def run(self, symbol: str) -> tuple:
+    def run(self, symbol: str, timeframe: Optional[str] = None) -> tuple:
         """Convenience method: analyse + execute for one symbol.
+
+        Parameters
+        ----------
+        symbol : str
+        timeframe : str, optional
+            Candle timeframe: '4h' or '1d'. Defaults to config value.
 
         Returns
         -------
         (final_state, decision_text, execution_result)
         """
-        final_state, decision_text = self.propagate(symbol)
+        final_state, decision_text = self.propagate(symbol, timeframe=timeframe)
         execution_result = self.execute_decision(decision_text, symbol)
         return final_state, decision_text, execution_result
 

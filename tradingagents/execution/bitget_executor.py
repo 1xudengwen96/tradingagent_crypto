@@ -315,7 +315,10 @@ class BitgetExecutor:
 
         if sandbox:
             self._exchange.set_sandbox_mode(True)
-            logger.info("BitgetExecutor running in SANDBOX mode")
+            # Bitget requires PAPTRADING=1 header for demo trading
+            # This must be set AFTER set_sandbox_mode() to ensure it's applied
+            self._exchange.headers['PAPTRADING'] = '1'
+            logger.info("BitgetExecutor running in SANDBOX mode (PAPTRADING=1)")
         else:
             logger.warning("BitgetExecutor running in LIVE mode — real funds at risk!")
 

@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 import ccxt
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,6 +41,9 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 LOG_FILE = PROJECT_DIR / "crypto_trading.log"
 HISTORY_FILE = CONFIG_DIR / "trade_history.json"
 BOT_STATE_FILE = CONFIG_DIR / "bot_state.json"
+
+# Load environment variables from .env file
+load_dotenv(PROJECT_DIR / ".env")
 
 # Ensure config directory exists
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -59,27 +63,26 @@ logging.getLogger("uvicorn").setLevel(logging.INFO)
 # Default configuration
 # ---------------------------------------------------------------------------
 DEFAULT_CONFIG = {
-    "bitget_api_key": "",
-    "bitget_secret": "",
-    "bitget_passphrase": "",
-    "sandbox_mode": True,
-    "account_type": "classic",       # "classic" | "uma" (unified)
-    "anthropic_api_key": "",
-    "openai_api_key": "",
-    "dashscope_api_key": "",
-    "google_api_key": "",
-    "deep_think_llm_provider": "anthropic",
-    "deep_think_llm": "claude-sonnet-4-5",
-    "quick_think_llm_provider": "anthropic",
-    "quick_think_llm": "claude-haiku-4-5",
+    # --- Trading (exposed to frontend) ---
+    "timeframe": "4h",                 # '4h' or '1d'
     "capital_usdt": 1000,
     "crypto_symbols": ["BTC/USDT:USDT", "ETH/USDT:USDT"],
     "interval_hours": 4,
-    "auto_execute": True,
+    "auto_execute": False,              # Default to analysis-only mode for safety
+    "sandbox_mode": True,
+    "account_type": "classic",
+    "feishu_webhook_url": "",
     "output_language": "Chinese",
+
+    # --- Sensitive (NOT exposed to frontend) ---
+    "bitget_api_key": "",               # Optional for analysis-only mode
+    "bitget_secret": "",                # Optional for analysis-only mode
+    "bitget_passphrase": "",            # Optional for analysis-only mode
+    "dashscope_api_key": "",            # Qwen/DashScope API Key (唯一LLM提供商)
+    "deep_think_llm": "qwen-max",       # Qwen深度思考模型
+    "quick_think_llm": "qwen-plus",     # Qwen快速思考模型
     "margin_mode": "isolated",
     "default_leverage": 5,
-    "feishu_webhook_url": "",
 }
 
 # ---------------------------------------------------------------------------
@@ -88,15 +91,34 @@ DEFAULT_CONFIG = {
 
 
 def load_config() -> dict:
-    """Load config from disk, merging with defaults."""
+    """Load config from disk, merging with defaults and .env fallback."""
+    # Start with defaults
+    cfg = {**DEFAULT_CONFIG}
+
+    # Load from disk if exists
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-            return {**DEFAULT_CONFIG, **saved}
+            cfg.update(saved)
         except (json.JSONDecodeError, IOError):
             logger.warning("Failed to load config, using defaults")
-    return {**DEFAULT_CONFIG}
+
+    # Fallback: fill sensitive fields from .env if still empty
+    env_map = {
+        "bitget_api_key": "BITGET_API_KEY",
+        "bitget_secret": "BITGET_SECRET",
+        "bitget_passphrase": "BITGET_PASSPHRASE",
+        "dashscope_api_key": "DASHSCOPE_API_KEY",
+        "feishu_webhook_url": "FEISHU_WEBHOOK_URL",
+    }
+    for key, env_var in env_map.items():
+        if not cfg.get(key):
+            val = os.getenv(env_var, "")
+            if val:
+                cfg[key] = val
+
+    return cfg
 
 
 def save_config(cfg: dict) -> None:
@@ -115,20 +137,14 @@ def mask_secret(secret: str, visible: int = 6) -> str:
 
 
 def masked_config(cfg: dict) -> dict:
-    """Return config with secrets masked."""
-    m = {**cfg}
-    for key in (
-        "bitget_api_key",
-        "bitget_secret",
-        "bitget_passphrase",
-        "anthropic_api_key",
-        "openai_api_key",
-        "dashscope_api_key",
-        "google_api_key",
-    ):
-        if key in m and m[key]:
-            m[key] = mask_secret(m[key])
-    return m
+    """Return config with only non-sensitive fields (for frontend display)."""
+    # Only expose trading-related fields, hide all API keys and LLM settings
+    safe_keys = {
+        "timeframe", "capital_usdt", "crypto_symbols", "interval_hours",
+        "auto_execute", "sandbox_mode", "account_type",
+        "feishu_webhook_url", "output_language",
+    }
+    return {k: v for k, v in cfg.items() if k in safe_keys}
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +259,7 @@ class BotProcess:
         env["DASHSCOPE_API_KEY"] = config.get("dashscope_api_key", "")
         env["CAPITAL_USDT"] = str(config.get("capital_usdt", 1000))
         env["FEISHU_WEBHOOK_URL"] = config.get("feishu_webhook_url", "")
+        env["TIMEFRAME"] = config.get("timeframe", "4h")
         env["DEBUG"] = "false"
 
         symbols = ",".join(config.get("crypto_symbols", ["BTC/USDT:USDT"]))
@@ -257,6 +274,10 @@ class BotProcess:
 
         if not config.get("auto_execute", True):
             cmd.append("--no-execute")
+        elif not config.get("bitget_api_key") or not config.get("bitget_secret") or not config.get("bitget_passphrase"):
+            # Auto-switch to analysis-only mode when API keys are not configured
+            cmd.append("--no-execute")
+            logger.info("No Bitget API keys configured — auto-switching to analysis-only mode (--no-execute)")
 
         try:
             self.process = await asyncio.create_subprocess_exec(
@@ -385,32 +406,20 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Pydantic models
+# Pydantic models (only non-sensitive fields exposed to frontend)
 # ---------------------------------------------------------------------------
 
 
 class ConfigRequest(BaseModel):
-    bitget_api_key: str = ""
-    bitget_secret: str = ""
-    bitget_passphrase: str = ""
+    timeframe: str = "4h"
+    capital_usdt: float = 1000
+    crypto_symbols: list = ["BTC/USDT:USDT"]
+    interval_hours: float = 4
+    auto_execute: bool = False           # Default to analysis-only mode
     sandbox_mode: bool = True
     account_type: str = "classic"
-    anthropic_api_key: str = ""
-    openai_api_key: str = ""
-    dashscope_api_key: str = ""
-    google_api_key: str = ""
-    deep_think_llm_provider: str = "anthropic"
-    deep_think_llm: str = "claude-sonnet-4-5"
-    quick_think_llm_provider: str = "anthropic"
-    quick_think_llm: str = "claude-haiku-4-5"
-    capital_usdt: float = 1000
-    crypto_symbols: list = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
-    interval_hours: float = 4
-    auto_execute: bool = True
-    output_language: str = "Chinese"
-    margin_mode: str = "isolated"
-    default_leverage: int = 5
     feishu_webhook_url: str = ""
+    output_language: str = "Chinese"
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +463,8 @@ def _create_bitget_exchange(cfg: dict) -> ccxt.bitget:
     })
     if cfg.get("sandbox_mode", True):
         exchange.set_sandbox_mode(True)
+        # Bitget requires PAPTRADING=1 header for demo trading
+        exchange.headers["PAPTRADING"] = "1"
     return exchange
 
 
@@ -499,32 +510,7 @@ async def validate_config(req: ConfigRequest):
     else:
         results["bitget"] = {"ok": False, "message": "API credentials not provided"}
 
-    # Validate Anthropic key
-    if req.anthropic_api_key:
-        try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=req.anthropic_api_key)
-            # Simple test: list models (lightweight call)
-            client.models.list()
-            results["anthropic"] = {"ok": True, "message": "Connection successful"}
-        except Exception as e:
-            results["anthropic"] = {"ok": False, "message": f"Error: {e}"}
-    else:
-        results["anthropic"] = {"ok": False, "message": "API key not provided"}
-
-    # Validate OpenAI key
-    if req.openai_api_key:
-        try:
-            import openai
-            client = openai.OpenAI(api_key=req.openai_api_key)
-            client.models.list()
-            results["openai"] = {"ok": True, "message": "Connection successful"}
-        except Exception as e:
-            results["openai"] = {"ok": False, "message": f"Error: {e}"}
-    else:
-        results["openai"] = {"ok": False, "message": "API key not provided"}
-
-    # Validate Qwen (DashScope) key
+    # Validate Qwen (DashScope) key - 唯一的LLM提供商
     if req.dashscope_api_key:
         try:
             from openai import OpenAI
@@ -533,11 +519,11 @@ async def validate_config(req: ConfigRequest):
                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             )
             client.models.list()
-            results["qwen"] = {"ok": True, "message": "Connection successful"}
+            results["qwen"] = {"ok": True, "message": "通义千问连接成功"}
         except Exception as e:
-            results["qwen"] = {"ok": False, "message": f"Error: {e}"}
+            results["qwen"] = {"ok": False, "message": f"错误: {e}"}
     else:
-        results["qwen"] = {"ok": False, "message": "API key not provided"}
+        results["qwen"] = {"ok": False, "message": "请配置 DashScope API Key (通义千问)"}
 
     return {"success": True, "results": results}
 
@@ -575,6 +561,15 @@ async def bot_status():
 async def get_balance():
     """Get account balance from Bitget."""
     cfg = load_config()
+    if not cfg.get("bitget_api_key") or not cfg.get("bitget_secret") or not cfg.get("bitget_passphrase"):
+        # Return 0 balance in read-only/analysis mode
+        return {
+            "success": True,
+            "total": 0,
+            "free": 0,
+            "used": 0,
+            "message": "API credentials not configured. Configure them to see real balance.",
+        }
     try:
         exchange = _create_bitget_exchange(cfg)
         balance = _fetch_bitget_balance(exchange, cfg)
@@ -584,6 +579,15 @@ async def get_balance():
             "free": balance["free"],
             "used": balance["used"],
         }
+    except ccxt.NetworkError as e:
+        # Network issues (e.g., Bitget API blocked in some regions)
+        return {
+            "success": True,
+            "total": 0,
+            "free": 0,
+            "used": 0,
+            "message": f"Network error: Cannot reach Bitget API. Running in analysis-only mode. ({e})",
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -592,6 +596,9 @@ async def get_balance():
 async def get_positions():
     """Get open positions from Bitget."""
     cfg = load_config()
+    if not cfg.get("bitget_api_key") or not cfg.get("bitget_secret") or not cfg.get("bitget_passphrase"):
+        # Return empty positions in read-only/analysis mode
+        return {"success": True, "positions": [], "message": "API credentials not configured. Configure them to see real positions."}
     try:
         exchange = _create_bitget_exchange(cfg)
         positions = exchange.fetch_positions()
@@ -611,6 +618,9 @@ async def get_positions():
                 })
 
         return {"success": True, "positions": open_positions}
+    except ccxt.NetworkError as e:
+        # Network issues (e.g., Bitget API blocked in some regions)
+        return {"success": True, "positions": [], "message": f"Network error: Cannot reach Bitget API. Running in analysis-only mode. ({e})"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

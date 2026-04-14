@@ -20,6 +20,7 @@ def create_crypto_market_analyst(llm):
     def crypto_market_analyst_node(state):
         current_date = state["trade_date"]
         symbol = state["company_of_interest"]  # e.g. "BTC/USDT:USDT"
+        timeframe = state.get("timeframe", "4h")  # Dynamic timeframe from state
         instrument_context = build_instrument_context(symbol)
 
         tools = [
@@ -31,11 +32,11 @@ def create_crypto_market_analyst(llm):
         ]
 
         system_message = (
-            """You are an expert cryptocurrency perpetual futures market analyst specializing in technical analysis and market microstructure. Your task is to produce a comprehensive technical analysis report for the given crypto perpetual contract.
+            f"""You are an expert cryptocurrency perpetual futures market analyst specializing in technical analysis and market microstructure. Your task is to produce a comprehensive technical analysis report for the given crypto perpetual contract.
 
 **Workflow (execute in this order):**
 1. Call `get_crypto_ticker` to get the latest price snapshot (24h change, high/low, volume).
-2. Call `get_crypto_ohlcv` with timeframe='4h' and limit=200 to get medium-term price history.
+2. Call `get_crypto_ohlcv` with timeframe='{timeframe}' and limit=200 to get price history.
 3. Call `get_crypto_indicators` with the same timeframe to compute all technical indicators.
 4. Call `get_funding_rate` to assess market positioning cost and sentiment bias.
 5. Call `get_open_interest` to understand the magnitude and trend of leveraged positions.

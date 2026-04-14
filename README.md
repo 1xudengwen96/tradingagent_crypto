@@ -26,7 +26,7 @@ Bitget 行情数据
               └────────┬────────┘
                        │
               ┌────────▼────────┐
-              │  研究经理（Claude Sonnet）  │  ← 综合研究报告
+              │  研究经理（Qwen-Max）    │  ← 综合研究报告
               └────────┬────────┘
                        │
               ┌────────▼────────┐
@@ -41,7 +41,7 @@ Bitget 行情数据
               └────────┬────────┘
                        │
               ┌────────▼────────┐
-              │ 组合管理者（Claude Sonnet）│  ← 最终交易决策
+              │ 组合管理者（Qwen-Max）   │  ← 最终交易决策
               └────────┬────────┘
                        │
               ┌────────▼────────┐
@@ -78,7 +78,7 @@ POSITION_SIZE: 20%
 | 📈 合约交易 | 支持 BTC/ETH/SOL/XRP/DOGE/BNB/XAU/XAG 永续合约 |
 | 🎮 沙盒/实盘 | 模拟盘测试策略，确认后一键切换实盘 |
 | ⏰ 定时调度 | 可自定义分析间隔（1h/2h/4h/6h/12h/24h） |
-| 🏗️ 多 LLM 支持 | Anthropic Claude / OpenAI GPT / 通义千问 Qwen |
+| 🏗️ 多 LLM 支持 | 通义千问 Qwen（qwen-max 深度分析 + qwen-plus 快速决策） |
 
 ---
 
@@ -87,8 +87,8 @@ POSITION_SIZE: 20%
 | 层次 | 技术 |
 |------|------|
 | AI 框架 | LangChain + LangGraph（StateGraph 多智能体编排） |
-| LLM（深度分析） | Claude Sonnet（研究经理 + 组合管理者） |
-| LLM（快速决策） | Claude Haiku（分析师 + 交易员 + 辩论者） |
+| LLM（深度分析） | Qwen-Max（研究经理 + 组合管理者） |
+| LLM（快速决策） | Qwen-Plus（分析师 + 交易员 + 辩论者） |
 | 交易所 | Bitget 永续合约（via CCXT） |
 | 数据源 | Bitget OHLCV、资金费率、订单簿、持仓量 |
 | 新闻数据 | CryptoPanic API |
@@ -142,9 +142,9 @@ cp .env.example .env
 编辑 `.env` 文件，至少填写以下内容：
 
 ```bash
-# LLM（推荐同时填写，仅填 Anthropic 也可运行）
-ANTHROPIC_API_KEY=sk-ant-xxxxx
-OPENAI_API_KEY=sk-xxxxx        # 可选
+# LLM - 仅使用通义千问(Qwen)作为唯一AI提供商
+# 获取地址: https://dashscope.console.aliyun.com/
+DASHSCOPE_API_KEY=sk-xxxxx
 
 # Bitget API（沙盒或实盘均可）
 BITGET_API_KEY=bg_xxxxx

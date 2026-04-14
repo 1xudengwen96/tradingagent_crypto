@@ -77,6 +77,8 @@ class QwenClient(BaseLLMClient):
             "model": self.model,
             "base_url": base_url,
             "api_key": api_key,
+            "timeout": 120.0,  # 120s timeout for complex agent reasoning
+            "max_retries": 3,  # Allow retries for transient failures
         }
 
         # 透传通用参数

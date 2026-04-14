@@ -50,6 +50,7 @@ class RiskDebateState(TypedDict):
 class AgentState(MessagesState):
     company_of_interest: Annotated[str, "Company that we are interested in trading"]
     trade_date: Annotated[str, "What date we are trading at"]
+    timeframe: Annotated[str, "Candle timeframe for analysis: '4h' or '1d'"] = "4h"
 
     sender: Annotated[str, "Agent that sent this message"]
 

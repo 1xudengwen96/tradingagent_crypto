@@ -40,12 +40,238 @@ logging.getLogger("ccxt").setLevel(logging.WARNING)
 logging.getLogger("langchain").setLevel(logging.WARNING)
 
 
-def send_feishu_notification(symbol: str, decision_text: str, execution_result, final_state: dict = None) -> None:
-    """Send AI analysis result to Feishu webhook as an interactive card with detailed MD reports."""
-    webhook_url = os.getenv("FEISHU_WEBHOOK_URL", "")
+def _send_feishu_card(webhook_url: str, header_title: str, header_template: str, content: str, fields: list = None) -> None:
+    """Internal helper: send a Feishu interactive card.
+
+    Args:
+        webhook_url: Full webhook URL string
+        header_title: Card header title text
+        header_template: Card color template (blue/green/red/orange/purple)
+        content: Markdown content body
+        fields: Optional list of field dicts for the footer
+    """
     if not webhook_url:
         return
 
+    elements = [
+        {
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": content[:2000],  # Feishu has message size limits
+            },
+        }
+    ]
+
+    if fields:
+        elements.append({"tag": "hr"})
+        elements.append({
+            "tag": "div",
+            "fields": fields,
+        })
+
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {"tag": "plain_text", "content": header_title},
+                "template": header_template,
+            },
+            "elements": elements,
+        },
+    }
+
+    try:
+        import requests
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            logger.info("Feishu card sent: %s", header_title)
+        else:
+            logger.warning("Feishu webhook returned HTTP %d for %s", resp.status_code, header_title)
+    except Exception:
+        logger.exception("Failed to send Feishu card: %s", header_title)
+
+
+def _get_webhook(env_var: str) -> str:
+    """Get webhook URL from environment variable."""
+    return os.getenv(env_var, "")
+
+
+def send_feishu_multi_notifications(symbol: str, final_state: dict, execution_result, now_str: str) -> None:
+    """Send AI analysis results to multiple Feishu bots, each representing a different role.
+
+    Roles:
+    - 📊 Market Analyst (FEISHU_WEBHOOK_ANALYST)
+    - 😊 Sentiment Analyst (FEISHU_WEBHOOK_SENTIMENT) - optional
+    - 📰 News Analyst (FEISHU_WEBHOOK_NEWS) - optional
+    - 💎 Fundamentals/Onchain Analyst (FEISHU_WEBHOOK_FUNDAMENTALS) - optional
+    - ⚖️ Research Manager (FEISHU_WEBHOOK_MANAGER)
+    - 🛡️ Risk Manager (FEISHU_WEBHOOK_RISK)
+    - 🎯 Final Decision / Trader (FEISHU_WEBHOOK_TRADER)
+    - 📋 Summary Card (FEISHU_WEBHOOK_URL) - fallback/general
+    """
+
+    # ─── 1. 📈 Market Analyst Report ──────────────────────────────────────
+    if final_state.get("market_report"):
+        webhook = _get_webhook("FEISHU_WEBHOOK_ANALYST") or _get_webhook("FEISHU_WEBHOOK_URL")
+        if webhook:
+            content = final_state["market_report"][:3000]
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n📈 市场分析师"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"📈 {symbol} 市场分析报告", "blue", content, fields)
+
+    # ─── 2. 😊 Sentiment Analyst Report ──────────────────────────────────
+    if final_state.get("sentiment_report"):
+        webhook = _get_webhook("FEISHU_WEBHOOK_SENTIMENT") or _get_webhook("FEISHU_WEBHOOK_URL")
+        if webhook:
+            content = final_state["sentiment_report"][:3000]
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n😊 情绪分析师"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"😊 {symbol} 情绪分析报告", "blue", content, fields)
+
+    # ─── 3. 📰 News Analyst Report ───────────────────────────────────────
+    if final_state.get("news_report"):
+        webhook = _get_webhook("FEISHU_WEBHOOK_NEWS") or _get_webhook("FEISHU_WEBHOOK_URL")
+        if webhook:
+            content = final_state["news_report"][:3000]
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n📰 新闻分析师"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"📰 {symbol} 新闻分析报告", "blue", content, fields)
+
+    # ─── 4. 💎 Fundamentals/Onchain Analyst Report ───────────────────────
+    if final_state.get("fundamentals_report") or final_state.get("onchain_report"):
+        webhook = _get_webhook("FEISHU_WEBHOOK_FUNDAMENTALS") or _get_webhook("FEISHU_WEBHOOK_URL")
+        if webhook:
+            report = final_state.get("fundamentals_report") or final_state.get("onchain_report", "")
+            content = report[:3000]
+            role_icon = "💎" if final_state.get("fundamentals_report") else "🔗"
+            role_name = "基本面分析师" if final_state.get("fundamentals_report") else "链上数据分析师"
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n{role_icon} {role_name}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"{role_icon} {symbol} {role_name}报告", "blue", content, fields)
+
+    # ─── 5. ⚖️ Research Manager (Bull/Bear Debate Summary) ──────────────
+    debate_state = final_state.get("investment_debate_state", {})
+    if debate_state.get("judge_decision"):
+        webhook = _get_webhook("FEISHU_WEBHOOK_MANAGER") or _get_webhook("FEISHU_WEBHOOK_URL")
+        if webhook:
+            content = debate_state["judge_decision"][:3000]
+
+            # Add bull/bear context if available
+            bull_hist = debate_state.get("bull_history", [])
+            bear_hist = debate_state.get("bear_history", [])
+            if bull_hist or bear_hist:
+                context_parts = []
+                if bull_hist:
+                    last_bull = bull_hist[-1] if isinstance(bull_hist, list) else bull_hist
+                    context_parts.append(f"**🐂 多头观点**\n{last_bull[:500]}")
+                if bear_hist:
+                    last_bear = bear_hist[-1] if isinstance(bear_hist, list) else bear_hist
+                    context_parts.append(f"**🐻 空头观点**\n{last_bear[:500]}")
+                if context_parts:
+                    content = "\n\n".join(context_parts) + f"\n\n---\n\n**⚖️ 研究经理裁决**\n\n{content}"
+
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n⚖️ 研究经理"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"⚖️ {symbol} 研究经理裁决", "orange", content, fields)
+
+    # ─── 6. 💼 Trader Recommendation ─────────────────────────────────────
+    if final_state.get("trader_investment_plan"):
+        # Trader is grouped with risk manager or sent separately if trader webhook exists
+        webhook = _get_webhook("FEISHU_WEBHOOK_TRADER")
+        if webhook:
+            content = final_state["trader_investment_plan"][:3000]
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n💼 交易员"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"💼 {symbol} 交易员建议", "blue", content, fields)
+
+    # ─── 7. 🛡️ Risk Manager Decision ────────────────────────────────────
+    if final_state.get("risk_debate_state", {}).get("judge_decision"):
+        webhook = _get_webhook("FEISHU_WEBHOOK_RISK") or _get_webhook("FEISHU_WEBHOOK_URL")
+        if webhook:
+            content = final_state["risk_debate_state"]["judge_decision"][:3000]
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n🛡️ 风险经理"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"🛡️ {symbol} 风险评估", "orange", content, fields)
+
+    # ─── 8. 🎯 Final Decision ────────────────────────────────────────────
+    if final_state.get("final_trade_decision"):
+        webhook = _get_webhook("FEISHU_WEBHOOK_TRADER") or _get_webhook("FEISHU_WEBHOOK_URL")
+        if webhook:
+            content = final_state["final_trade_decision"][:3000]
+
+            # Parse execution status
+            status_emoji = "⏸️ 仅分析"
+            status_text = "未执行交易"
+            if execution_result is not None:
+                if execution_result.success:
+                    order_ids = [o.get("id", "?") for o in execution_result.orders]
+                    status_emoji = "✅ 已下单"
+                    status_text = f"订单: {', '.join(order_ids)}"
+                else:
+                    status_emoji = "❌ 下单失败"
+                    status_text = execution_result.error or "未知错误"
+
+            fields = [
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n🎯 最终决策"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**执行状态**\n{status_emoji} {status_text}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
+            ]
+            _send_feishu_card(webhook, f"🎯 {symbol} 最终决策", "green" if execution_result is None or execution_result.success else "red", content, fields)
+
+
+def send_feishu_notification(symbol: str, decision_text: str, execution_result, final_state: dict = None) -> None:
+    """Send AI analysis result to Feishu webhook(s).
+
+    This is the main entry point. It delegates to send_feishu_multi_notifications
+    for role-based multi-bot messaging. If no role-specific webhooks are configured,
+    it falls back to sending a single summary card to FEISHU_WEBHOOK_URL.
+    """
+    webhook_url = os.getenv("FEISHU_WEBHOOK_URL", "")
+    now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+    # Try multi-bot notifications first
+    if final_state:
+        send_feishu_multi_notifications(symbol, final_state, execution_result, now_str)
+
+    # Fallback: if no role-specific webhooks found, send a single summary card
+    if not webhook_url:
+        return
+
+    # Check if any role-specific webhook was configured
+    role_webhooks = [
+        "FEISHU_WEBHOOK_ANALYST", "FEISHU_WEBHOOK_SENTIMENT", "FEISHU_WEBHOOK_NEWS",
+        "FEISHU_WEBHOOK_FUNDAMENTALS", "FEISHU_WEBHOOK_MANAGER", "FEISHU_WEBHOOK_RISK",
+        "FEISHU_WEBHOOK_TRADER",
+    ]
+    has_role_webhook = any(os.getenv(w, "") for w in role_webhooks)
+
+    if has_role_webhook:
+        # Multi-bot mode: role-specific bots already sent above
+        return
+
+    # Single-bot mode: send a consolidated summary card
     # Parse execution status
     status_emoji = "⏸️ 仅分析"
     status_text = "未执行交易"
@@ -62,53 +288,53 @@ def send_feishu_notification(symbol: str, decision_text: str, execution_result, 
     detailed_content = ""
     if final_state:
         reports = []
-        
+
         # Market Analyst Report
         if final_state.get("market_report"):
             reports.append(f"**📈 市场分析师**\n{final_state['market_report'][:800]}")
-        
+
         # Sentiment Report
         if final_state.get("sentiment_report"):
             reports.append(f"**😊 情绪分析师**\n{final_state['sentiment_report'][:800]}")
-        
+
         # News Report
         if final_state.get("news_report"):
             reports.append(f"**📰 新闻分析师**\n{final_state['news_report'][:800]}")
-        
+
         # Fundamentals/Onchain Report
         if final_state.get("fundamentals_report"):
             reports.append(f"**💎 基本面分析师**\n{final_state['fundamentals_report'][:800]}")
         elif final_state.get("onchain_report"):
             reports.append(f"**🔗 链上数据分析师**\n{final_state['onchain_report'][:800]}")
-        
+
         # Bull Researcher
         if final_state.get("investment_debate_state", {}).get("bull_history"):
             bull_hist = final_state["investment_debate_state"]["bull_history"]
             if bull_hist:
                 reports.append(f"**🐂 多头研究员**\n{bull_hist[-1][:800] if isinstance(bull_hist, list) else bull_hist[:800]}")
-        
+
         # Bear Researcher
         if final_state.get("investment_debate_state", {}).get("bear_history"):
             bear_hist = final_state["investment_debate_state"]["bear_history"]
             if bear_hist:
                 reports.append(f"**🐻 空头研究员**\n{bear_hist[-1][:800] if isinstance(bear_hist, list) else bear_hist[:800]}")
-        
+
         # Investment Judge (Research Manager)
         if final_state.get("investment_debate_state", {}).get("judge_decision"):
             reports.append(f"**⚖️ 研究经理**\n{final_state['investment_debate_state']['judge_decision'][:800]}")
-        
+
         # Trader Recommendation
         if final_state.get("trader_investment_plan"):
             reports.append(f"**💼 交易员**\n{final_state['trader_investment_plan'][:800]}")
-        
+
         # Risk Debate Judge
         if final_state.get("risk_debate_state", {}).get("judge_decision"):
             reports.append(f"**🛡️ 风险经理**\n{final_state['risk_debate_state']['judge_decision'][:800]}")
-        
+
         # Final Decision
         if final_state.get("final_trade_decision"):
             reports.append(f"**🎯 最终决策**\n{final_state['final_trade_decision'][:800]}")
-        
+
         # Combine reports
         if reports:
             detailed_content = "\n\n---\n\n".join(reports)
@@ -145,7 +371,7 @@ def send_feishu_notification(symbol: str, decision_text: str, execution_result, 
                             "is_short": True,
                             "text": {
                                 "tag": "lark_md",
-                                "content": f"**时间**\n{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+                                "content": f"**时间**\n{now_str}",
                             },
                         },
                     ],

@@ -18,7 +18,7 @@ DEFAULT_CONFIG = {
     "anthropic_effort": None,           # "high", "medium", "low"
     # Output language for analyst reports and final decision
     # Internal agent debate stays in English for reasoning quality
-    "output_language": "English",
+    "output_language": "Chinese",
     # Debate and discussion settings
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
@@ -85,7 +85,7 @@ CRYPTO_CONFIG = {
     "max_risk_discuss_rounds": 1,
 
     # Output language
-    "output_language": "English",
+    "output_language": "Chinese",
 
     # CryptoPanic API (optional — public API works without key but has rate limits)
     "cryptopanic_api_key": os.getenv("CRYPTOPANIC_API_KEY", ""),

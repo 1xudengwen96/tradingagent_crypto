@@ -432,6 +432,17 @@ def get_open_interest(symbol: str) -> str:
     """
     try:
         exchange = get_bitget_exchange()
+        config = get_config()
+        is_sandbox = config.get("sandbox_mode", True)
+
+        # Bitget sandbox (demo trading) does NOT support open interest data
+        if is_sandbox:
+            return (
+                f"=== Open Interest for {symbol} ===\n"
+                f"[Sandbox Mode] Open interest data is not available in Bitget demo/sandbox mode.\n"
+                f"In live trading, this metric would show total outstanding contracts.\n"
+                f"\nNote: This limitation is specific to Bitget's sandbox environment and does not affect live trading."
+            )
 
         oi_data = exchange.fetch_open_interest(symbol)
         oi = oi_data.get("openInterest", None)

@@ -29,9 +29,11 @@ def get_language_instruction() -> str:
     """
     from tradingagents.dataflows.config import get_config
     lang = get_config().get("output_language", "English")
-    if lang.strip().lower() == "english":
+    lang_lower = lang.strip().lower()
+    if lang_lower == "english":
         return ""
-    return f" Write your entire response in {lang}."
+    # Strong mandatory instruction - must be at the end of system prompt
+    return f"\n\n【语言强制要求】你必须且只能使用{lang}撰写所有输出内容。包括报告标题、段落、表格、注释等全部文本。禁止使用任何其他语言。这是强制性要求，不可违反。"
 
 
 def build_instrument_context(ticker: str) -> str:

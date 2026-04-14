@@ -72,6 +72,13 @@ DEFAULT_CONFIG = {
     "sandbox_mode": True,
     "account_type": "classic",
     "feishu_webhook_url": "",
+    "feishu_webhook_analyst": "",
+    "feishu_webhook_sentiment": "",
+    "feishu_webhook_news": "",
+    "feishu_webhook_fundamentals": "",
+    "feishu_webhook_manager": "",
+    "feishu_webhook_risk": "",
+    "feishu_webhook_trader": "",
     "output_language": "Chinese",
 
     # --- Sensitive (NOT exposed to frontend) ---
@@ -111,6 +118,13 @@ def load_config() -> dict:
         "bitget_passphrase": "BITGET_PASSPHRASE",
         "dashscope_api_key": "DASHSCOPE_API_KEY",
         "feishu_webhook_url": "FEISHU_WEBHOOK_URL",
+        "feishu_webhook_analyst": "FEISHU_WEBHOOK_ANALYST",
+        "feishu_webhook_sentiment": "FEISHU_WEBHOOK_SENTIMENT",
+        "feishu_webhook_news": "FEISHU_WEBHOOK_NEWS",
+        "feishu_webhook_fundamentals": "FEISHU_WEBHOOK_FUNDAMENTALS",
+        "feishu_webhook_manager": "FEISHU_WEBHOOK_MANAGER",
+        "feishu_webhook_risk": "FEISHU_WEBHOOK_RISK",
+        "feishu_webhook_trader": "FEISHU_WEBHOOK_TRADER",
     }
     for key, env_var in env_map.items():
         if not cfg.get(key):
@@ -142,7 +156,10 @@ def masked_config(cfg: dict) -> dict:
     safe_keys = {
         "timeframe", "capital_usdt", "crypto_symbols", "interval_hours",
         "auto_execute", "sandbox_mode", "account_type",
-        "feishu_webhook_url", "output_language",
+        "feishu_webhook_url", "feishu_webhook_analyst", "feishu_webhook_sentiment",
+        "feishu_webhook_news", "feishu_webhook_fundamentals", "feishu_webhook_manager",
+        "feishu_webhook_risk", "feishu_webhook_trader",
+        "output_language",
     }
     return {k: v for k, v in cfg.items() if k in safe_keys}
 
@@ -259,6 +276,13 @@ class BotProcess:
         env["DASHSCOPE_API_KEY"] = config.get("dashscope_api_key", "")
         env["CAPITAL_USDT"] = str(config.get("capital_usdt", 1000))
         env["FEISHU_WEBHOOK_URL"] = config.get("feishu_webhook_url", "")
+        env["FEISHU_WEBHOOK_ANALYST"] = config.get("feishu_webhook_analyst", "")
+        env["FEISHU_WEBHOOK_SENTIMENT"] = config.get("feishu_webhook_sentiment", "")
+        env["FEISHU_WEBHOOK_NEWS"] = config.get("feishu_webhook_news", "")
+        env["FEISHU_WEBHOOK_FUNDAMENTALS"] = config.get("feishu_webhook_fundamentals", "")
+        env["FEISHU_WEBHOOK_MANAGER"] = config.get("feishu_webhook_manager", "")
+        env["FEISHU_WEBHOOK_RISK"] = config.get("feishu_webhook_risk", "")
+        env["FEISHU_WEBHOOK_TRADER"] = config.get("feishu_webhook_trader", "")
         env["TIMEFRAME"] = config.get("timeframe", "4h")
         env["DEBUG"] = "false"
 
@@ -419,6 +443,13 @@ class ConfigRequest(BaseModel):
     sandbox_mode: bool = True
     account_type: str = "classic"
     feishu_webhook_url: str = ""
+    feishu_webhook_analyst: str = ""
+    feishu_webhook_sentiment: str = ""
+    feishu_webhook_news: str = ""
+    feishu_webhook_fundamentals: str = ""
+    feishu_webhook_manager: str = ""
+    feishu_webhook_risk: str = ""
+    feishu_webhook_trader: str = ""
     output_language: str = "Chinese"
 
 

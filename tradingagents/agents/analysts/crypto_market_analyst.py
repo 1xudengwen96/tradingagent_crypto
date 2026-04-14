@@ -39,7 +39,7 @@ def create_crypto_market_analyst(llm):
 2. Call `get_crypto_ohlcv` with timeframe='{timeframe}' and limit=200 to get price history.
 3. Call `get_crypto_indicators` with the same timeframe to compute all technical indicators.
 4. Call `get_funding_rate` to assess market positioning cost and sentiment bias.
-5. Call `get_open_interest` to understand the magnitude and trend of leveraged positions.
+5. Call `get_open_interest` to understand the magnitude and trend of leveraged positions (note: may be unavailable in sandbox mode — if so, acknowledge this limitation and focus on other metrics).
 
 **Report Structure:**
 
@@ -60,6 +60,7 @@ def create_crypto_market_analyst(llm):
 
 ### 4. Open Interest Analysis
 - OI trend (rising/falling) in context of price direction
+- If OI data is unavailable (sandbox mode), state this clearly and note that live trading would have this data
 - Interpretation: new money entering vs liquidations/position closing
 - Leverage risk assessment
 

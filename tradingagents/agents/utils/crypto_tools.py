@@ -148,3 +148,23 @@ def get_crypto_ticker(
         Latest price, 24h change %, high/low, and volume data.
     """
     return route_to_vendor("get_crypto_ticker", symbol)
+
+
+@tool
+def detect_volume_anomaly(
+    symbol: Annotated[str, "Trading pair in Bitget format, e.g. 'BTC/USDT:USDT'"],
+    timeframe: Annotated[str, "Candle timeframe: '1m','5m','15m','1h','4h','1d'"] = "4h",
+    lookback_period: Annotated[int, "Number of periods for volume analysis (default 50)"] = 50,
+) -> str:
+    """
+    Detect volume anomalies using statistical analysis (Z-score method).
+    Identifies unusually high/low volume compared to the 20-period moving average.
+    Critical for confirming breakouts, spotting reversals, and detecting institutional flows.
+    Args:
+        symbol: e.g. 'BTC/USDT:USDT'
+        timeframe: candle interval (recommended: 4h or 1d for swing trading)
+        lookback_period: number of candles for analysis
+    Returns:
+        Volume anomaly detection results with Z-score, trend analysis, and interpretation.
+    """
+    return route_to_vendor("detect_volume_anomaly", symbol, timeframe, lookback_period)

@@ -1,78 +1,116 @@
 # tradingagents/agents/managers/crypto_research_manager.py
 """
-加密货币研究主管
-综合多空辩论，产出 LONG / SHORT / CLOSE 方向决策及交易计划。
+加密货币研究经理（重构版）- 简化汇总角色
+
+重构要点：
+1. 移除多空辩论逻辑，改为简单汇总技术面和宏观面分析
+2. 输出综合研究报告（不直接产生交易信号，交给 Portfolio Manager 决策）
+3. 保留记忆功能用于复盘
 """
 
-from tradingagents.agents.utils.agent_utils import build_instrument_context
+import logging
+from typing import Dict, Any
+from tradingagents.agents.utils.agent_utils import build_instrument_context, get_language_instruction
+
+logger = logging.getLogger(__name__)
 
 
 def create_crypto_research_manager(llm, memory):
-    def research_manager_node(state) -> dict:
+    """
+    创建研究经理节点
+    
+    职责：
+    - 综合技术面分析师和宏观链上分析师的报告
+    - 识别两个报告之间的一致性和分歧
+    - 输出结构化综合研究报告
+    - 不直接产生交易信号（交给 Portfolio Manager）
+    
+    Args:
+        llm: LLM 客户端（使用深度思考模型 Qwen-Max）
+        memory: 记忆存储器
+    
+    Returns:
+        research_manager_node 函数
+    """
+    
+    def research_manager_node(state) -> Dict[str, Any]:
         symbol = state["company_of_interest"]
         instrument_context = build_instrument_context(symbol)
-        history = state["investment_debate_state"].get("history", "")
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        onchain_report = state["fundamentals_report"]
-
-        investment_debate_state = state["investment_debate_state"]
-
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{onchain_report}"
+        
+        # 获取两个分析师的报告
+        technical_report = state.get("technical_report", "")
+        macro_onchain_report = state.get("macro_onchain_report", "")
+        
+        # 获取记忆
+        curr_situation = f"{technical_report}\n\n{macro_onchain_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
-
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
+        
+        system_message = f"""You are the Research Manager for a crypto quantitative fund. Your role is to synthesize technical and macro/on-chain analysis into a comprehensive research report.
 
-        prompt = f"""You are the Head of Research for a crypto quantitative trading desk. Your role is to evaluate the bull vs bear debate and produce a decisive, actionable trading plan for {symbol} perpetual futures.
+**Your Responsibilities:**
+1. Synthesize the Technical Analyst and Macro/On-chain Analyst reports
+2. Identify consistencies and divergences between the two perspectives
+3. Assess overall signal quality and confidence
+4. Produce a structured research summary (NOT a trading decision — that's the Portfolio Manager's job)
 
-{instrument_context}
+**Input Reports:**
+- Technical Analysis Report: {technical_report}
+- Macro/On-chain Analysis Report: {macro_onchain_report}
 
-**Your Decision Framework:**
-- Evaluate the quality of evidence on both sides (not just argument volume)
-- Prioritize: technical signals > microstructure > sentiment > macro (for short-term contract trading)
-- Make a decisive directional call: LONG, SHORT, or CLOSE/STAY FLAT
-- AVOID neutral/hold if the evidence clearly favors one direction — be decisive
-
-**Required Output:**
-
-1. **Direction Decision**: LONG / SHORT / CLOSE (flat)
-2. **Conviction Level**: High / Medium / Low
-3. **Rationale**: The 3 strongest pieces of evidence supporting your decision
-4. **Invalidation Conditions**: What market conditions would make this call wrong?
-5. **Detailed Trading Plan** (feed directly to the Trader agent):
-   - Direction: LONG or SHORT
-   - Suggested leverage range: e.g., 5x-10x (based on volatility/ATR)
-   - Entry zone: specific price level or range
-   - Stop-loss level: specific price (beyond which the thesis is invalidated)
-   - Take-profit targets: TP1, TP2, TP3
-   - Time horizon: e.g., "4-12 hours" or "1-3 days"
-   - Position sizing recommendation: e.g., 20% of capital given current volatility
-
-**Past Mistakes to Learn From:**
+**Past Research Lessons:**
 {past_memory_str}
 
-**Debate History:**
-{history}
+**Output Format (structured JSON):**
+```json
+{{
+  "synthesis": {{
+    "technical_summary": "<3-4 sentence summary of technical setup>",
+    "macro_summary": "<3-4 sentence summary of macro/on-chain setup>",
+    "signal_alignment": "ALIGNED|DIVERGENT|MIXED",
+    "alignment_notes": "<explain if signals agree or conflict>"
+  }},
+  "combined_evidence": {{
+    "bullish_factors": ["<factor 1>", "<factor 2>", ...],
+    "bearish_factors": ["<factor 1>", "<factor 2>", ...],
+    "neutral_factors": ["<factor 1>", ...]
+  }},
+  "signal_quality": {{
+    "data_completeness": "HIGH|MODERATE|LOW",
+    "signal_clarity": "CLEAR|MIXED|AMBIGUOUS",
+    "confidence_level": <1-10 integer>
+  }},
+  "key_risks": ["<risk 1>", "<risk 2>", ...],
+  "research_conclusion": "<2-3 paragraph comprehensive summary for Portfolio Manager>"
+}}
 
-Present your analysis conversationally but include the structured trading plan clearly. Be decisive."""
+**Important:**
+- Do NOT make trading decisions (direction, position size, etc.)
+- Focus on synthesizing evidence objectively
+- Highlight any data gaps or conflicting signals
+- This report feeds directly into the Portfolio Manager's decision process
 
-        response = llm.invoke(prompt)
-
-        new_investment_debate_state = {
-            "judge_decision": response.content,
-            "history": investment_debate_state.get("history", ""),
-            "bear_history": investment_debate_state.get("bear_history", ""),
-            "bull_history": investment_debate_state.get("bull_history", ""),
-            "current_response": response.content,
-            "count": investment_debate_state["count"],
-        }
-
+{instrument_context}
+""" + get_language_instruction()
+        
+        from langchain_core.prompts import ChatPromptTemplate
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_message),
+        ])
+        
+        chain = prompt | llm
+        result = chain.invoke({})
+        
+        research_report = result.content
+        
+        # 保存到记忆
+        memory.save_memory(curr_situation, research_report)
+        
         return {
-            "investment_debate_state": new_investment_debate_state,
-            "investment_plan": response.content,
+            "research_report": research_report,
+            "investment_plan": research_report,  # 兼容现有 state 字段
         }
-
+    
     return research_manager_node

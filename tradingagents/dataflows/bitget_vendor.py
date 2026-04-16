@@ -296,6 +296,98 @@ def get_crypto_indicators(symbol: str, timeframe: str = "1h", limit: int = 200) 
 
 
 # ─────────────────────────────────────────────
+# 成交量异常检测（4H/1D 核心数据维度）
+# ─────────────────────────────────────────────
+
+def detect_volume_anomaly(symbol: str, timeframe: str = "4h", lookback_period: int = 50) -> str:
+    """
+    检测成交量异常（Volume Anomaly Detection）—— 4H/1D 交易核心数据维度
+    
+    通过分析成交量的统计分布，识别异常放量/缩量，帮助判断：
+    - 突破真实性（真突破 vs 假突破）
+    - 趋势延续/反转信号
+    - 主力资金进场/离场
+    
+    Args:
+        symbol: 交易对，如 'BTC/USDT:USDT'
+        timeframe: K 线周期（推荐 4h 或 1d）
+        lookback_period: 回看周期数（默认 50）
+    
+    Returns:
+        格式化字符串，包含成交量异常检测结果和解释
+    """
+    try:
+        exchange = get_bitget_exchange()
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=lookback_period + 10)
+        
+        if not ohlcv:
+            return f"No volume data available for {symbol}"
+        
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.sort_values("datetime").reset_index(drop=True)
+        
+        # 计算成交量统计指标
+        volume = df["volume"]
+        vol_mean = volume.rolling(20).mean()  # 20 周期平均成交量
+        vol_std = volume.rolling(20).std()    # 成交量标准差
+        vol_upper = vol_mean + 2 * vol_std    # 上异常阈值（+2σ）
+        vol_lower = vol_mean + 0.5 * vol_std  # 下异常阈值（低于平均 50%）
+        
+        # 最新 K 线成交量分析
+        latest_vol = volume.iloc[-1]
+        latest_mean = vol_mean.iloc[-1]
+        latest_std = vol_std.iloc[-1]
+        latest_upper = vol_upper.iloc[-1]
+        latest_lower = vol_lower.iloc[-1]
+        
+        # 成交量异常判定
+        anomaly_type = "NORMAL"
+        anomaly_desc = ""
+        z_score = (latest_vol - latest_mean) / latest_std if latest_std > 0 else 0
+        
+        if latest_vol > latest_upper:
+            anomaly_type = "UNUSUALLY_HIGH"
+            anomaly_desc = f"异常放量（+{z_score:.1f}σ）— 可能是主力进场/突破确认信号"
+        elif latest_vol < latest_lower:
+            anomaly_type = "UNUSUALLY_LOW"
+            anomaly_desc = f"异常缩量（-{abs(z_score):.1f}σ）— 市场观望情绪浓厚，可能是变盘前兆"
+        else:
+            anomaly_desc = "成交量处于正常范围"
+        
+        # 成交量趋势（与价格趋势对比）
+        price_change = (df["close"].iloc[-1] - df["close"].iloc[-5]) / df["close"].iloc[-5] * 100 if len(df) >= 5 else 0
+        vol_trend = "INCREASING" if latest_vol > vol_mean.iloc[-5] else "DECREASING"
+        
+        # 量价关系分析
+        volume_price_relation = "CONFIRMING"  # 默认量价配合
+        if price_change > 2 and latest_vol < latest_mean:
+            volume_price_relation = "DIVERGENCE (weak volume on rally)"
+        elif price_change < -2 and latest_vol > latest_upper:
+            volume_price_relation = "PANIC SELLING (high volume on drop)"
+        elif price_change > 2 and latest_vol > latest_upper:
+            volume_price_relation = "STRONG BREAKOUT (volume confirmed)"
+        
+        result = f"=== Volume Anomaly Detection for {symbol} ({timeframe}) ===\n\n"
+        result += f"Latest Volume: {latest_vol:,.0f}\n"
+        result += f"20-period Avg Volume: {latest_mean:,.0f}\n"
+        result += f"Volume vs Avg: {((latest_vol / latest_mean - 1) * 100):+.1f}%\n"
+        result += f"Z-Score: {z_score:.2f}\n\n"
+        
+        result += f"Anomaly Type: {anomaly_type}\n"
+        result += f"Analysis: {anomaly_desc}\n\n"
+        
+        result += f"Volume Trend: {vol_trend}\n"
+        result += f"Price Change (5 periods): {price_change:+.2f}%\n"
+        result += f"Volume-Price Relation: {volume_price_relation}\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"Error detecting volume anomaly for {symbol}: {str(e)}"
+
+
+# ─────────────────────────────────────────────
 # 资金费率
 # ─────────────────────────────────────────────
 

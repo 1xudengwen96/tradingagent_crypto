@@ -1,6 +1,8 @@
 from typing import Annotated
 
 # Import from vendor-specific modules
+# Note: yfinance and alpha_vantage are retained for potential stock trading use cases
+# but are NOT used for crypto data routing
 from .y_finance import (
     get_YFin_data_online,
     get_stock_stats_indicators_window,
@@ -24,7 +26,7 @@ from .alpha_vantage import (
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
 
-# Bitget crypto vendor
+# Bitget crypto vendor (PRIMARY for all crypto data)
 from .bitget_vendor import (
     get_crypto_ohlcv as bitget_get_crypto_ohlcv,
     get_crypto_indicators as bitget_get_crypto_indicators,
@@ -34,6 +36,7 @@ from .bitget_vendor import (
     get_crypto_news as bitget_get_crypto_news,
     get_crypto_global_news as bitget_get_crypto_global_news,
     get_crypto_ticker as bitget_get_crypto_ticker,
+    detect_volume_anomaly as bitget_detect_volume_anomaly,
 )
 
 # Configuration and routing logic
@@ -82,6 +85,7 @@ TOOLS_CATEGORIES = {
             "get_crypto_news",
             "get_crypto_global_news",
             "get_crypto_ticker",
+            "detect_volume_anomaly",  # 4H/1D core data dimension
         ]
     },
 }
@@ -158,6 +162,9 @@ VENDOR_METHODS = {
     },
     "get_crypto_ticker": {
         "bitget": bitget_get_crypto_ticker,
+    },
+    "detect_volume_anomaly": {
+        "bitget": bitget_detect_volume_anomaly,
     },
 }
 

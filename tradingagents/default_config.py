@@ -7,43 +7,51 @@ DEFAULT_CONFIG = {
         os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
         "dataflows/data_cache",
     ),
-    # LLM settings
-    "llm_provider": "openai",
-    "deep_think_llm": "gpt-5.4",
-    "quick_think_llm": "gpt-5.4-mini",
-    "backend_url": "https://api.openai.com/v1",
+    # LLM settings - 仅使用通义千问 (Qwen) 作为唯一 LLM 提供商
+    "llm_provider": "qwen",
+    "deep_think_llm": "qwen-max",        # 用于研究经理和投资组合经理
+    "quick_think_llm": "qwen-plus",      # 用于分析师
+    "backend_url": "https://dashscope.aliyun.com/api/v1",
+    
     # Provider-specific thinking configuration
-    "google_thinking_level": None,      # "high", "minimal", etc.
-    "openai_reasoning_effort": None,    # "medium", "high", "low"
-    "anthropic_effort": None,           # "high", "medium", "low"
+    "google_thinking_level": None,
+    "openai_reasoning_effort": None,
+    "anthropic_effort": None,
+    
     # Output language for analyst reports and final decision
-    # Internal agent debate stays in English for reasoning quality
     "output_language": "Chinese",
-    # Debate and discussion settings
-    "max_debate_rounds": 1,
-    "max_risk_discuss_rounds": 1,
+    
+    # Debate and discussion settings (精简后不再需要，保留以备未来重新启用)
+    "max_debate_rounds": 0,              # 已移除辩论机制
+    "max_risk_discuss_rounds": 0,        # 已移除风险辩论
     "max_recur_limit": 100,
-    # Data vendor configuration
-    # Category-level configuration (default for all tools in category)
+    
+    # Data vendor configuration - 加密货币仅使用 Bitget
     "data_vendors": {
-        "core_stock_apis": "yfinance",       # Options: alpha_vantage, yfinance
-        "technical_indicators": "yfinance",  # Options: alpha_vantage, yfinance
-        "fundamental_data": "yfinance",      # Options: alpha_vantage, yfinance
-        "news_data": "yfinance",             # Options: alpha_vantage, yfinance
-        "crypto_data": "bitget",             # Crypto perpetual futures data
+        "crypto_data": "bitget",         # Crypto perpetual futures data (唯一数据源)
     },
+    
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {
-        # Example: "get_stock_data": "alpha_vantage",  # Override category default
+        # 所有 crypto 工具强制使用 bitget
+        "get_crypto_ohlcv": "bitget",
+        "get_crypto_indicators": "bitget",
+        "get_funding_rate": "bitget",
+        "get_orderbook": "bitget",
+        "get_open_interest": "bitget",
+        "get_crypto_news": "bitget",
+        "get_crypto_global_news": "bitget",
+        "get_crypto_ticker": "bitget",
     },
 }
 
 # ---------------------------------------------------------------------------
-# Crypto-specific configuration (used by CryptoTradingAgentsGraph)
+# Crypto-specific configuration (4H/1D 中线交易专用配置)
 # ---------------------------------------------------------------------------
 
 CRYPTO_CONFIG = {
     # Symbols to trade (Bitget perpetual futures format)
+    # 聚焦主流币种：BTC/ETH/SOL/XRP/DOGE/BNB/XAU/XAG
     "crypto_symbols": ["BTC/USDT:USDT", "ETH/USDT:USDT"],
 
     # Bitget API credentials — set via environment variables
@@ -55,9 +63,9 @@ CRYPTO_CONFIG = {
     "sandbox_mode": True,          # Set False for live trading
     "account_type": "classic",     # "classic" | "uma" (unified)
     "margin_mode": "isolated",     # "isolated" | "cross"
-    "default_leverage": 5,         # Fallback if parser fails
+    "default_leverage": 1,         # 不使用杠杆（通过仓位大小控制风险）
 
-    # Data settings — 4小时线和日线专用
+    # Data settings — 4 小时线和日线专用 (核心周期)
     "timeframe": os.getenv("TIMEFRAME", "4h"),  # OHLCV candle timeframe (4h or 1d)
     "candle_limit": 200,           # Number of candles to fetch
 
@@ -65,28 +73,35 @@ CRYPTO_CONFIG = {
     "capital_usdt": 1000.0,        # Total account capital for position sizing
 
     # Scheduling (APScheduler cron-style)
-    "schedule_hour": "0",          # Run daily at midnight UTC
+    # 4H 周期：每 4 小时执行一次 (0, 4, 8, 12, 16, 20 点)
+    # 1D 周期：每日 08:00 (UTC+8) 执行全局扫描
+    "schedule_hour": "*/4",        # 4H 周期
     "schedule_minute": "5",
 
-    # LLM configuration - 仅使用通义千问(Qwen)作为唯一LLM提供商
-    # 深度思考模型: 用于研究经理和投资组合经理
+    # LLM configuration - 仅使用通义千问 (Qwen)
     "deep_think_llm_provider": "qwen",
     "deep_think_llm": "qwen-max",
 
-    # 快速思考模型: 用于分析师、交易员、辩论者
     "quick_think_llm_provider": "qwen",
     "quick_think_llm": "qwen-plus",
 
     # DashScope API Key (通义千问唯一接口)
     "dashscope_api_key": os.getenv("DASHSCOPE_API_KEY", ""),
 
-    # Debate rounds
-    "max_debate_rounds": 1,
-    "max_risk_discuss_rounds": 1,
+    # 视觉化分析配置（支持 Qwen-VL-Max）
+    "enable_vision_analysis": False,  # 是否启用 K 线图表视觉分析
+    "vision_llm": "qwen-vl-max",     # 视觉分析模型
 
     # Output language
     "output_language": "Chinese",
 
     # CryptoPanic API (optional — public API works without key but has rate limits)
     "cryptopanic_api_key": os.getenv("CRYPTOPANIC_API_KEY", ""),
+    
+    # 4H/1D 交易策略参数
+    "risk_per_trade": 0.01,          # 单笔最大亏损（总资金的 1%）
+    "atr_multiplier": 1.5,           # 止损 = 1.5 × ATR14
+    "tp1_risk_reward": 2.0,          # 止盈 1 盈亏比
+    "tp2_risk_reward": 3.5,          # 止盈 2 盈亏比
+    "max_position_pct": 0.30,        # 单笔仓位上限（30%）
 }

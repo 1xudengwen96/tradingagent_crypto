@@ -38,6 +38,7 @@ from tradingagents.agents.utils.crypto_tools import (
     get_crypto_news,
     get_crypto_global_news,
     get_crypto_ticker,
+    detect_volume_anomaly,
 )
 
 from tradingagents.execution.bitget_executor import BitgetExecutor, SignalParser
@@ -300,36 +301,28 @@ class CryptoTradingAgentsGraph:
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
         """Wire crypto data tools into LangGraph ToolNodes.
 
-        铁三角精简版（日线专用）：
-        - market:       技术分析师工具（OHLCV/指标/Ticker/资金费率）
-        - fundamentals: 宏观分析师工具（Ticker/订单簿/未平仓量/资金费率）
+        铁三角精简版（v2.0 - 4H/1D 专用）：
+        - technical:    技术面分析师工具（OHLCV/指标/成交量异常/Ticker）
+        - macro:        宏观分析师工具（Ticker/订单簿/未平仓量/资金费率/宏观新闻）
 
-        social 和 news 工具节点保留注册但不接入图流程（方便未来重新启用）。
+        social 和 news 工具节点移除（已合并到 macro 节点）。
         """
         return {
-            # Market analyst（技术面）: 价格数据 + 技术指标
-            "market": ToolNode([
+            # Technical analyst（技术面）: 价格数据 + 技术指标 + 成交量异常
+            "technical": ToolNode([
                 get_crypto_ohlcv,
                 get_crypto_indicators,
                 get_crypto_ticker,
                 get_funding_rate,
+                detect_volume_anomaly,  # 4H/1D core data dimension
             ]),
-            # Onchain / Macro analyst（宏观）: 市场微观结构
-            "fundamentals": ToolNode([
+            # Macro / Onchain analyst（宏观）: 市场微观结构 + 宏观新闻
+            "macro": ToolNode([
                 get_crypto_ticker,
                 get_orderbook,
                 get_open_interest,
                 get_funding_rate,
                 get_crypto_global_news,   # 宏观新闻（BTC/市场整体趋势）
-            ]),
-            # 以下保留以备未来重新启用（当前不接入图流程）
-            "social": ToolNode([
-                get_crypto_news,
-                get_funding_rate,
-            ]),
-            "news": ToolNode([
-                get_crypto_global_news,
-                get_crypto_news,
             ]),
         }
 
@@ -339,16 +332,14 @@ class CryptoTradingAgentsGraph:
         self.log_states_dict[key] = {
             "symbol": symbol,
             "trade_date": trade_date,
-            "market_report": final_state.get("market_report", ""),
-            "sentiment_report": final_state.get("sentiment_report", ""),
-            "news_report": final_state.get("news_report", ""),
-            "onchain_report": final_state.get("fundamentals_report", ""),
+            # v2.0 Refactored: New field names for精简 architecture
+            "technical_report": final_state.get("technical_report", ""),
+            "macro_onchain_report": final_state.get("macro_onchain_report", ""),
+            "research_report": final_state.get("research_report", ""),
+            # Legacy field mappings (for backward compatibility)
+            "market_report": final_state.get("technical_report", ""),
+            "onchain_report": final_state.get("macro_onchain_report", ""),
             "investment_plan": final_state.get("investment_plan", ""),
-            "trader_decision": final_state.get("trader_investment_plan", ""),
-            "risk_debate": {
-                "history": final_state.get("risk_debate_state", {}).get("history", ""),
-                "judge_decision": final_state.get("risk_debate_state", {}).get("judge_decision", ""),
-            },
             "final_trade_decision": final_state.get("final_trade_decision", ""),
         }
 

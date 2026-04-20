@@ -1,426 +1,539 @@
-# TradingAgents Crypto — AI 多智能体加密货币合约交易系统
+# TradingAgents Crypto — 加密货币合约交易机器人
 
-> 基于 [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) v0.2.3 扩展开发  
-> 论文：[TradingAgents: Multi-Agents LLM Financial Trading Framework](https://arxiv.org/abs/2412.20138)
-
-将原始股票交易框架改造为专门交易 **BTC/ETH/SOL/XRP/DOGE/BNB/XAU/XAG 永续合约**的 AI 系统，部署在 Bitget 交易所（支持沙盒/实盘），并提供 Web 管理界面和飞书通知。
+> **重要说明**：本文档根据实际代码逻辑编写，完整披露交易策略、盈利逻辑和风险机制。
 
 ---
 
-## 核心架构
+## 📌 目录
+
+1. [系统概述](#系统概述)
+2. [交易逻辑详解](#交易逻辑详解)
+3. [盈利逻辑](#盈利逻辑)
+4. [风险管理](#风险管理)
+5. [系统架构](#系统架构)
+6. [安装指南](#安装指南)
+7. [配置说明](#配置说明)
+8. [使用方法](#使用方法)
+9. [常见问题](#常见问题)
+
+---
+
+## 系统概述
+
+这是一个**基于多智能体 AI 的加密货币永续合约交易系统**，使用通义千问（Qwen）大模型作为决策核心，通过 Bitget 交易所执行交易。
+
+### 核心特性
+
+- **交易对**：BTC/USDT、ETH/USDT 永续合约（可扩展）
+- **交易周期**：4 小时线（默认）或日线
+- **执行模式**：沙盒模拟 / 实盘交易
+- **通知系统**：飞书机器人多角色推送
+- **决策机制**：AI 多智能体分析 + Python 硬编码风控
+
+### 关键设计原则
+
+1. **AI 只负责方向判断**：LLM 仅输出交易方向（LONG/SHORT/CLOSE）和信心评分
+2. **Python 硬编码风控**：仓位大小、止损、止盈由数学公式计算，LLM 无法干预
+3. **BTC 200 日均线拦截器**：BTC 跌破 200 日均线时，强制禁止做多（系统性风险保护）
+
+---
+
+## 交易逻辑详解
+
+### 1. 决策流程（10 步流水线）
 
 ```
-Bitget 行情数据
-      │
-      ▼
-┌─────────────────────────────────────────────────────┐
-│                   分析师层（串行）                    │
-│  📊 市场分析师   📰 新闻分析师                        │
-│  💬 情绪分析师   🔗 链上/微观结构分析师                │
-└──────────────────────┬──────────────────────────────┘
-                       │
-              ┌────────┴────────┐
-              │   研究员辩论     │
-              │  🐂 多头研究员   │
-              │  🐻 空头研究员   │
-              └────────┬────────┘
-                       │
-              ┌────────▼────────┐
-              │  研究经理（Qwen-Max）    │  ← 综合研究报告
-              └────────┬────────┘
-                       │
-              ┌────────▼────────┐
-              │     交易员       │  ← 生成初始交易计划
-              └────────┬────────┘
-                       │
-              ┌────────┴────────┐
-              │   风险辩论三方   │
-              │  ⚡ 激进分析师   │
-              │  🛡️ 保守分析师   │
-              │  ⚖️ 中立分析师   │
-              └────────┬────────┘
-                       │
-              ┌────────▼────────┐
-              │ 组合管理者（Qwen-Max）   │  ← 最终交易决策
-              └────────┬────────┘
-                       │
-              ┌────────▼────────┐
-              │  BitgetExecutor  │  ← 解析信号 + 下单
-              │  市价单 + 止损   │
-              │  止盈TP1 + TP2   │
-              └─────────────────┘
-                       │
-              ┌────────▼────────┐
-              │  飞书 Webhook    │  ← 推送分析结果到飞书群
-              └─────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  每 4 小时自动触发（或手动触发）                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 1-3: 数据获取                                               │
+│  - 从 Bitget 获取 OHLCV K 线数据（200 根 4H/1D 蜡烛）              │
+│  - 计算技术指标：SMA/EMA/MACD/RSI/布林带/ATR14/VWMA              │
+│  - 获取资金费率、订单簿、未平仓量、宏观新闻                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 4-5: 分析师智能体                                           │
+│  📈 技术面分析师：分析 K 线形态、指标信号、成交量异常               │
+│  🌍 宏观/链上分析师：分析订单簿、资金费率、未平仓量、宏观新闻      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 6-7: 研究经理汇总                                           │
+│  ⚖️ 综合两份分析报告，识别一致性和分歧                            │
+│  输出结构化研究报告（不做交易决策）                               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 8: 交易员建议                                               │
+│  💼 基于研究报告生成初步交易计划                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 9: 风险辩论（可选）                                         │
+│  🛡️ 激进派 vs 保守派辩论仓位和风险                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 10: 投资组合经理（最终决策者）                               │
+│  🎯 LLM 输出：方向 + 信心评分 + 理由                               │
+│  📐 Python 计算：仓位大小、止损、止盈（ATR 数学模型）               │
+│  🚫 BTC 拦截器：检查 BTC 是否在 200 日均线上方                      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 执行层（如果 auto_execute=True）                                 │
+│  - 解析 LLM 决策文本                                              │
+│  - 设置杠杆倍数                                                   │
+│  - 计算仓位大小（USDT）                                           │
+│  - 下单：市价单 + 止损单 + 2 个止盈单                               │
+│  - 发送飞书通知                                                   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**决策输出格式示例：**
+### 2. 信号类型
+
+| 信号 | 含义 | 仓位系数 |
+|------|------|----------|
+| `LONG` | 强烈做多 | 100% |
+| `LONG-LITE` | 谨慎做多 | 50% |
+| `SHORT` | 强烈做空 | 100% |
+| `SHORT-LITE` | 谨慎做空 | 50% |
+| `CLOSE` | 平仓/观望 | 0% |
+
+### 3. LLM 输出格式
+
 ```
-DIRECTION: LONG
-LEVERAGE: 5x
-ENTRY: 市价
-STOP_LOSS: 65000
-TAKE_PROFIT_1: 68000  (平仓 50% 仓位)
-TAKE_PROFIT_2: 71000  (平仓剩余仓位)
-POSITION_SIZE: 20%
+DIRECTION: LONG-LITE
+CONVICTION: 7
+RATIONALE: 技术面显示突破整理形态，但宏观情绪偏中性，建议轻仓试多
 ```
 
 ---
 
-## 功能特性
+## 盈利逻辑
 
-| 功能 | 说明 |
-|------|------|
-| 🤖 AI 多智能体分析 | 4 位分析师 → 研究员辩论 → 交易员 → 风险辩论 → 组合管理者 |
-| 📊 Web 管理界面 | 仪表盘、API 配置、交易设置、持仓查看、日志查看 |
-| 🔔 飞书通知 | 每次分析结果自动推送到飞书群（含决策 + 订单状态） |
-| 📈 合约交易 | 支持 BTC/ETH/SOL/XRP/DOGE/BNB/XAU/XAG 永续合约 |
-| 🎮 沙盒/实盘 | 模拟盘测试策略，确认后一键切换实盘 |
-| ⏰ 定时调度 | 可自定义分析间隔（1h/2h/4h/6h/12h/24h） |
-| 🏗️ 多 LLM 支持 | 通义千问 Qwen（qwen-max 深度分析 + qwen-plus 快速决策） |
+### 1. 核心盈利公式
+
+本系统采用**趋势跟踪 + 均值回归**混合策略，盈利来源：
+
+1. **趋势捕捉**：通过技术指标（MACD、EMA、布林带）识别趋势方向
+2. **盈亏比优势**：每笔交易至少 2:1 盈亏比（止盈 1）和 3.5:1（止盈 2）
+3. **仓位管理**：根据 ATR 波动率动态调整仓位，避免过度暴露
+
+### 2. 数学模型（硬编码）
+
+#### A. 止损距离计算
+
+```python
+stop_loss_distance = ATR_MULTIPLIER × ATR14
+# 默认：ATR_MULTIPLIER = 1.5
+# 例如：ATR14 = 1000 USD → 止损距离 = 1500 USD
+```
+
+#### B. 仓位大小计算
+
+```python
+# 1. 计算信念因子（根据 LLM 信心评分）
+conviction_factor = clamp(conviction_score / 10, 0.5, 1.0)
+# 信心 1-4 → 0.5, 信心 5-10 → 0.5-1.0
+
+# 2. 计算止损百分比
+stop_loss_pct = stop_loss_distance / entry_price
+
+# 3. 反推仓位（保证单笔最大亏损不超过总资金的 RISK_PER_TRADE）
+position_usdt = (capital × RISK_PER_TRADE × conviction_factor) / stop_loss_pct
+
+# 4. 仓位上限保护
+position_usdt = min(position_usdt, capital × MAX_POSITION_PCT)
+# 默认：MAX_POSITION_PCT = 30%
+
+# 5. LITE 信号额外缩半
+if direction in ("LONG-LITE", "SHORT-LITE"):
+    position_usdt *= 0.5
+```
+
+#### C. 止盈价格计算
+
+```python
+if LONG:
+    stop_loss = entry_price - stop_loss_distance
+    take_profit_1 = entry_price + 2.0 × stop_loss_distance   # 2R
+    take_profit_2 = entry_price + 3.5 × stop_loss_distance   # 3.5R
+else:  # SHORT
+    stop_loss = entry_price + stop_loss_distance
+    take_profit_1 = entry_price - 2.0 × stop_loss_distance
+    take_profit_2 = entry_price - 3.5 × stop_loss_distance
+```
+
+#### D. 出场策略
+
+- **TP1（50% 仓位）**：2R 盈亏比 → 锁定一半利润
+- **TP2（50% 仓位）**：3.5R 盈亏比 → 让利润奔跑
+- **止损**：1.5R 反向 → 严格止损
+
+### 3. 期望收益模型
+
+假设胜率 45%（趋势跟踪策略典型值）：
+
+```
+单笔期望 = (胜率 × 平均盈利) - (败率 × 平均亏损)
+         = (0.45 × 2.5R) - (0.55 × 1R)
+         = 1.125R - 0.55R
+         = 0.575R
+
+每笔平均盈利 = 0.575 × (总资金 × 1%) = 0.575% 总资金
+```
+
+**年化预期**（每 4 小时交易一次，年交易 2190 次）：
+```
+年收益 = 2190 × 0.575% ≈ 12.6 倍（理论值，实际受胜率和交易频率影响）
+```
+
+### 4. BTC 200 日均线拦截器
+
+**硬性规则**：当 BTC 价格跌破 200 日均线时，系统强制禁止做多任何币种。
+
+```python
+if btc_price < btc_ma200 and direction in ("LONG", "LONG-LITE"):
+    direction = "CLOSE"  # 强制平仓
+```
+
+**逻辑**：BTC 跌破 200 日均线通常预示熊市来临，此时做多风险极高。
 
 ---
 
-## 技术栈
+## 风险管理
 
-| 层次 | 技术 |
-|------|------|
-| AI 框架 | LangChain + LangGraph（StateGraph 多智能体编排） |
-| LLM（深度分析） | Qwen-Max（研究经理 + 组合管理者） |
-| LLM（快速决策） | Qwen-Plus（分析师 + 交易员 + 辩论者） |
-| 交易所 | Bitget 永续合约（via CCXT） |
-| 数据源 | Bitget OHLCV、资金费率、订单簿、持仓量 |
-| 新闻数据 | CryptoPanic API |
-| 技术指标 | pandas 自计算（SMA/EMA/MACD/RSI/BB/ATR/VWMA） |
-| 定时调度 | APScheduler |
-| Web 后端 | FastAPI + Uvicorn |
-| Web 前端 | 单页应用（SSE 日志流） |
-| 消息通知 | 飞书 Webhook（Interactive Card） |
-| Python | ≥ 3.10 |
+### 1. 核心风控参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `RISK_PER_TRADE` | 1% | 单笔最大亏损（总资金的 1%） |
+| `ATR_MULTIPLIER` | 1.5 | 止损 = 1.5 × ATR14 |
+| `MAX_POSITION_PCT` | 30% | 单笔仓位上限 |
+| `LITE_POSITION_SCALE` | 0.5 | LITE 信号仓位缩半 |
+| `default_leverage` | 1x | 默认不使用杠杆 |
+
+### 2. 三层风控机制
+
+#### 第一层：仓位控制
+- 单笔最大亏损固定为总资金的 1%
+- 即使连续亏损 10 次，总亏损也仅为 10%
+
+#### 第二层：止损保护
+- 每笔交易必须设置止损（1.5×ATR）
+- 止损单在开仓时同步下达（reduceOnly）
+
+#### 第三层：系统性风险拦截
+- BTC 200 日均线拦截器
+- ATR 数据获取失败时强制降级为 CLOSE
+
+### 3. 杠杆策略
+
+**默认不使用杠杆**（1x），通过仓位大小控制风险暴露。
+
+如需使用杠杆，LLM 可输出 2-5x，但系统会限制：
+```python
+leverage = min(leverage, 125)  # Bitget 最大杠杆限制
+```
 
 ---
 
-## 快速开始
+## 系统架构
 
-### 1. 克隆项目
+### 组件图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        crypto_main.py                           │
+│                    主入口 + 调度器 + 通知                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              CryptoTradingAgentsGraph                           │
+│         多智能体图编排（LangGraph）                              │
+└─────────────────────────────────────────────────────────────────┘
+          │                    │                    │
+          ▼                    ▼                    ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│   分析师智能体    │ │   研究经理        │ │   投资组合经理    │
+│  - 技术面         │ │  - 汇总报告       │ │  - 最终决策       │
+│  - 宏观/链上      │ │  - 信号质量评估   │ │  - 仓位计算       │
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    BitgetExecutor                               │
+│                  订单执行层（CCXT）                              │
+│  - 解析 LLM 决策文本                                             │
+│  - 设置杠杆 + 保证金模式                                         │
+│  - 下单：入场 + 止损 + 止盈                                      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Bitget API                                 │
+│                   （沙盒 / 实盘）                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 智能体角色
+
+| 角色 | 职责 | LLM 模型 |
+|------|------|----------|
+| 📈 技术面分析师 | K 线、指标、成交量分析 | Qwen-Plus |
+| 🌍 宏观/链上分析师 | 订单簿、资金费率、宏观新闻 | Qwen-Plus |
+| ⚖️ 研究经理 | 综合两份报告，输出研究结论 | Qwen-Max |
+| 💼 交易员 | 生成初步交易计划 | Qwen-Plus |
+| 🛡️ 风险经理 | 风险评估（可选） | Qwen-Plus |
+| 🎯 投资组合经理 | 最终决策 + 仓位计算 | Qwen-Max |
+
+---
+
+## 安装指南
+
+### 前置要求
+
+- Python 3.10+
+- 通义千问 API Key（https://dashscope.console.aliyun.com/）
+- Bitget API Key（https://www.bitget.com/zh-CN/account/newcreate）
+- （可选）飞书机器人 Webhook
+
+### Step 1: 克隆项目
 
 ```bash
-git clone https://github.com/1xudengwen96/tradingagent_crypto.git
+git clone <your-repo-url>
 cd tradingagent_crypto
 ```
 
-### 2. 安装依赖
-
-推荐使用 `uv`（项目自带 uv.lock 锁文件）：
+### Step 2: 创建虚拟环境
 
 ```bash
-# 安装 uv（如未安装）
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.local/bin/env
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# 或
+.venv\Scripts\activate     # Windows
+```
 
-# 安装所有项目依赖（自动创建虚拟环境 .venv/）
+### Step 3: 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+或（如果有 uv）：
+
+```bash
 uv sync
-
-# 安装加密货币额外依赖
-uv pip install ccxt apscheduler requests fastapi uvicorn
 ```
 
-或使用 pip：
-
-```bash
-pip install -e .
-pip install ccxt apscheduler requests fastapi uvicorn
-```
-
-### 3. 配置环境变量
+### Step 4: 配置环境变量
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，至少填写以下内容：
+编辑 `.env` 文件：
+
+```ini
+# 通义千问 API Key（必填）
+DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Bitget API Key（必填）
+BITGET_API_KEY=bg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+BITGET_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+BITGET_PASSPHRASE=your_passphrase_here
+
+# 沙盒模式（推荐测试时开启）
+BITGET_SANDBOX=true
+
+# 飞书通知（可选）
+FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxxxxxxxxxx
+
+# 交易参数（可选）
+CAPITAL_USDT=1000
+TIMEFRAME=4h
+```
+
+### Step 5: 验证安装
 
 ```bash
-# LLM - 仅使用通义千问(Qwen)作为唯一AI提供商
-# 获取地址: https://dashscope.console.aliyun.com/
-DASHSCOPE_API_KEY=sk-xxxxx
-
-# Bitget API（沙盒或实盘均可）
-BITGET_API_KEY=bg_xxxxx
-BITGET_SECRET=xxxxx
-BITGET_PASSPHRASE=xxxxx
-BITGET_SANDBOX=true            # 测试时保持 true
+python crypto_main.py --once --no-execute
 ```
 
-> **如何获取 Bitget Sandbox API Key：**
-> 1. 注册 [Bitget](https://www.bitget.com) 账号
-> 2. 切换到 **Demo Trading（模拟交易）** 模式
-> 3. 进入 API 管理 → 创建 API Key，选择永续合约读写权限
-
-### 4. 运行
-
-#### 命令行模式
-
-```bash
-# 推荐：首次运行，只分析不下单，看看 AI 决策质量
-uv run python crypto_main.py --once --no-execute
-
-# 分析并在沙盒模式下单（需要 Bitget API Key）
-uv run python crypto_main.py --once
-
-# 只分析 BTC，不下单
-uv run python crypto_main.py --once --no-execute --symbol BTC/USDT:USDT
-
-# 定时运行（默认每 4 小时自动分析一次）
-uv run python crypto_main.py
-
-# 每 2 小时运行一次
-uv run python crypto_main.py --interval-hours 2
-```
-
-#### Web UI 模式（推荐）
-
-```bash
-# 启动 Web 服务（默认 0.0.0.0:8000）
-python server.py
-
-# 自定义端口
-python server.py --port 9000
-```
-
-然后浏览器打开 `http://localhost:8000`，在 Web 界面中完成所有配置和管理。
-
----
-
-## Web 界面说明
-
-Web 界面包含以下功能模块：
-
-| 模块 | 功能 |
-|------|------|
-| 📊 仪表盘 | 账户余额、可用余额、持仓数量、运行时间、快速启停 |
-| 🔑 API 配置 | Bitget API 密钥、LLM API 密钥、连接测试 |
-| ⚙️ 交易设置 | 交易模式（沙盒/实盘）、交易对多选、资金量、分析间隔、LLM 选择、飞书 Webhook |
-| 📈 持仓 | 当前持仓列表（方向、数量、开仓价、标记价、未实现盈亏、杠杆） |
-| 📝 日志 | 实时 SSE 日志流，支持按级别过滤和下载 |
-
-### 交易对多选
-
-在「交易设置」页面，通过多选下拉框选择要交易品种：
-- BTC/USDT（比特币）
-- ETH/USDT（以太坊）
-- SOL/USDT（Solana）
-- XRP/USDT（瑞波）
-- DOGE/USDT（狗狗币）
-- BNB/USDT（币安币）
-- XAU/USDT（黄金）
-- XAG/USDT（白银）
-
-### 飞书通知
-
-1. 在飞书群中添加自定义机器人，获取 Webhook URL
-2. 在「交易设置」页面填入飞书 Webhook URL
-3. 点击「测试飞书通知」验证连接
-4. 每次 AI 分析完成后，分析结果自动推送到飞书群
-
-### 分析间隔
-
-选择分析间隔后，**需要停止并重新启动 Bot** 才能生效。例如选择「每 1 小时」后：
-1. 点击「停止机器人」
-2. 点击「保存设置」
-3. 点击「启动机器人」
-
----
-
-## 项目结构
-
-```
-tradingagent_crypto/
-├── crypto_main.py                           # 主入口（APScheduler 定时驱动 + 飞书通知）
-├── server.py                                # Web 后端（FastAPI API + 前端服务）
-├── .env.example                             # 环境变量配置模板
-├── pyproject.toml                           # 项目依赖声明
-├── CRYPTO_PROGRESS.md                       # 开发进度记录
-│
-└── tradingagents/
-    ├── default_config.py                    # 默认配置（含 CRYPTO_CONFIG）
-    │
-    ├── agents/
-    │   ├── analysts/
-    │   │   ├── crypto_market_analyst.py     # 技术分析师（K线 + 指标）
-    │   │   ├── crypto_sentiment_analyst.py  # 情绪分析师（资金费率 + 新闻情绪）
-    │   │   ├── crypto_news_analyst.py       # 新闻分析师（宏观 + 币种新闻）
-    │   │   └── crypto_onchain_analyst.py    # 链上/微观结构分析师（订单簿 + OI）
-    │   ├── researchers/
-    │   │   ├── crypto_bull_researcher.py    # 多头研究员（做多论据）
-    │   │   └── crypto_bear_researcher.py    # 空头研究员（做空论据）
-    │   ├── managers/
-    │   │   ├── crypto_research_manager.py   # 研究经理（综合研究裁决）
-    │   │   └── crypto_portfolio_manager.py  # 组合管理者（最终交易决策）
-    │   ├── trader/
-    │   │   └── crypto_trader.py             # 交易员（初始交易计划）
-    │   ├── risk_mgmt/
-    │   │   ├── crypto_aggressive_debator.py # 激进风险分析师
-    │   │   ├── crypto_conservative_debator.py # 保守风险分析师
-    │   │   └── crypto_neutral_debator.py    # 中立风险分析师
-    │   └── utils/
-    │       └── crypto_tools.py              # LangChain @tool 数据工具集
-    │
-    ├── dataflows/
-    │   ├── bitget_vendor.py                 # Bitget 数据层（CCXT 封装）
-    │   └── interface.py                     # 数据路由接口
-    │
-    ├── execution/
-    │   └── bitget_executor.py               # 信号解析 + Bitget 合约下单执行器
-    │
-    └── graph/
-        ├── crypto_setup.py                  # LangGraph StateGraph 装配器
-        └── crypto_trading_graph.py          # 主图类（CryptoTradingAgentsGraph）
-```
-
----
-
-## API 接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/config` | 获取当前配置（密钥已脱敏） |
-| GET | `/api/config/full` | 获取完整配置（含密钥） |
-| POST | `/api/config` | 保存配置 |
-| POST | `/api/config/validate` | 测试 API 密钥连通性 |
-| POST | `/api/bot/start` | 启动 Bot |
-| POST | `/api/bot/stop` | 停止 Bot |
-| GET | `/api/bot/status` | 获取 Bot 状态 |
-| GET | `/api/account/balance` | 获取合约账户余额 |
-| GET | `/api/account/positions` | 获取当前持仓 |
-| GET | `/api/logs/tail` | 获取最近 N 行日志 |
-| GET | `/api/logs/stream` | SSE 实时日志流 |
-| POST | `/api/feishu/test` | 测试飞书 Webhook 连通性 |
+如果看到分析输出，说明安装成功。
 
 ---
 
 ## 配置说明
 
-所有核心参数在 `tradingagents/default_config.py` 的 `CRYPTO_CONFIG` 中调整：
+### 核心配置文件
+
+1. **`.env`**：敏感信息（API Key、交易参数）
+2. **`tradingagents/default_config.py`**：默认配置（可通过环境变量覆盖）
+
+### 关键配置项
+
+| 配置项 | 环境变量 | 默认值 | 说明 |
+|--------|----------|--------|------|
+| 交易对 | - | BTC/USDT, ETH/USDT | 可在 `CRYPTO_CONFIG` 中修改 |
+| 时间周期 | `TIMEFRAME` | 4h | 4h 或 1d |
+| 资金量 | `CAPITAL_USDT` | 1000 | 每笔交易使用的 USDT |
+| 沙盒模式 | `BITGET_SANDBOX` | true | true=沙盒，false=实盘 |
+| 调试模式 | `DEBUG` | false | true=输出详细日志 |
+| 风控参数 | - | 见上文 | 在 `CRYPTO_CONFIG` 中修改 |
+
+### 修改交易对
+
+编辑 `tradingagents/default_config.py`：
 
 ```python
 CRYPTO_CONFIG = {
-    # 交易对（Bitget 永续合约格式）
-    "crypto_symbols": ["BTC/USDT:USDT", "ETH/USDT:USDT"],
-
-    # 交易所设置
-    "sandbox_mode": True,          # False = 切换实盘（危险！）
-    "margin_mode": "isolated",     # "isolated"（逐仓）| "cross"（全仓）
-    "default_leverage": 5,         # 解析失败时的兜底杠杆
-
-    # 数据设置
-    "timeframe": "1h",             # K 线周期：1m/5m/15m/1h/4h/1d
-    "candle_limit": 200,           # 每次拉取的 K 线数量
-
-    # 资金管理
-    "capital_usdt": 1000.0,        # 账户总资金（用于计算仓位大小）
-
-    # LLM 配置
-    "deep_think_llm": "claude-sonnet-4-5",   # 研究经理 + 组合管理者
-    "quick_think_llm": "claude-haiku-4-5",   # 分析师 + 交易员 + 辩论者
-
-    # 辩论轮次（增大可提升决策质量，但会增加 API 消耗）
-    "max_debate_rounds": 1,
-    "max_risk_discuss_rounds": 1,
+    "crypto_symbols": ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT"],
+    # ...
 }
 ```
 
 ---
 
-## 数据工具说明
+## 使用方法
 
-| 工具函数 | 数据来源 | 用途 |
-|---------|---------|------|
-| `get_crypto_ohlcv` | Bitget CCXT | K 线数据（OHLCV） |
-| `get_crypto_indicators` | pandas 自计算 | SMA/EMA/MACD/RSI/布林带/ATR/VWMA |
-| `get_crypto_ticker` | Bitget CCXT | 实时价格快照 |
-| `get_funding_rate` | Bitget CCXT | 当前 + 历史资金费率（多空博弈信号）|
-| `get_orderbook` | Bitget CCXT | 买卖盘深度分析（流动性判断）|
-| `get_open_interest` | Bitget CCXT | 持仓量 + 趋势（市场情绪强弱）|
-| `get_crypto_news` | CryptoPanic API | 特定币种新闻 |
-| `get_crypto_global_news` | CryptoPanic API | 全球加密市场宏观新闻 |
+### 1. 运行一次分析（不执行交易）
 
----
-
-## 执行层说明
-
-`BitgetExecutor` 收到组合管理者的决策文本后自动执行：
-
-1. **`SignalParser.parse()`** — 正则提取方向 / 杠杆 / 止损 / 止盈 / 仓位比例
-2. 计算合约数量：`capital × position_pct ÷ entry_price ÷ contract_size`
-3. 设置保证金模式 + 杠杆
-4. 市价开仓
-5. 设置止损单（`reduce-only`，保护本金）
-6. 设置止盈 TP1（平仓 50% 仓位）+ TP2（平仓剩余仓位）
-
-**CLOSE 信号处理**：市价平仓所有当前持仓 + 撤销所有挂单
-
----
-
-## 飞书通知格式
-
-每次分析完成后，飞书群会收到一条交互式卡片消息：
-
-```
-📊 BTC/USDT:USDT 分析报告
-
-[AI 分析决策内容...]
-─────────────────
-执行状态：✅ 已下单 / ⏸️ 仅分析 / ❌ 下单失败
-时间：2026-04-06 12:00 UTC
+```bash
+python crypto_main.py --once --no-execute
 ```
 
----
+### 2. 运行一次分析并执行交易
 
-## 运行日志
+```bash
+python crypto_main.py --once
+```
 
-每次分析结果自动保存到以下位置：
+### 3. 定时运行（每 4 小时）
 
-| 位置 | 内容 |
-|------|------|
-| 终端 stdout | 实时进度 + 最终决策摘要 |
-| `crypto_trading.log` | 追加模式的完整日志 |
-| Web 界面「日志」页 | 实时 SSE 日志流 |
-| `crypto_results/<symbol>/logs/state_<datetime>.json` | 每个智能体的完整输出（便于调试审计）|
+```bash
+python crypto_main.py
+```
+
+按 `Ctrl+C` 停止。
+
+### 4. 只分析单个币种
+
+```bash
+python crypto_main.py --symbol BTC/USDT:USDT --once
+```
+
+### 5. 修改时间周期
+
+```bash
+TIMEFRAME=1d python crypto_main.py --once
+```
+
+### 6. 查看账户余额
+
+程序启动时会自动显示账户余额（如果 `auto_execute=True`）。
 
 ---
 
 ## 常见问题
 
-**Q: 只有 Anthropic API Key，没有 OpenAI Key 怎么办？**  
-A: 在 `tradingagents/default_config.py` 中，`CRYPTO_CONFIG` 的 `quick_think_llm_provider` 已设为 `"anthropic"`，所有智能体都会使用 Claude，无需 OpenAI Key。
+### Q1: 为什么我的交易没有执行？
 
-**Q: CryptoPanic 新闻拉取失败？**  
-A: 无 API Key 时公共接口限速 60次/小时。建议在 [cryptopanic.com](https://cryptopanic.com/developers/api/) 免费申请 Key 后填入 `CRYPTOPANIC_API_KEY`。
+**可能原因**：
+1. `--no-execute` 参数被设置
+2. `BITGET_SANDBOX=true` 但未在 Bitget 沙盒账户中开启 Demo Trading
+3. API Key 配置错误
+4. ATR 数据获取失败（系统自动降级为 CLOSE）
 
-**Q: Bitget 止损单下单报错？**  
-A: 不同 ccxt 版本的 stop order 参数格式可能有差异。请检查 ccxt 版本（`ccxt.__version__`）并参考 [CCXT Bitget 文档](https://docs.ccxt.com/#/?id=bitget)。
+**解决方法**：
+- 检查 `.env` 中的 API Key 是否正确
+- 登录 Bitget 沙盒账户，确认已开启 Demo Trading
+- 查看日志文件 `crypto_trading.log`
 
-**Q: 如何切换到实盘？**  
-A: 在 Web 界面「交易设置」页面关闭沙盒开关，并换用实盘 API Key，确保账户有足够 USDT 保证金。**请务必充分测试后再切换！**
+### Q2: 如何切换到实盘交易？
 
-**Q: 修改分析间隔后没有生效？**  
-A: 需要停止并重新启动 Bot 才会使用新的间隔。修改间隔 → 保存设置 → 停止 Bot → 启动 Bot。
+**警告**：实盘交易有风险，请确保充分理解策略后再切换。
 
-**Q: 飞书通知收不到？**  
-A: 检查 Webhook URL 是否正确，点击「测试飞书通知」按钮验证。确认飞书群的机器人权限已开启。
+1. 在 `.env` 中设置：
+   ```ini
+   BITGET_SANDBOX=false
+   ```
+2. 确认 API Key 有交易权限
+3. 先用小资金测试（`CAPITAL_USDT=100`）
+
+### Q3: 如何调整风险参数？
+
+编辑 `tradingagents/default_config.py` 中的 `CRYPTO_CONFIG`：
+
+```python
+CRYPTO_CONFIG = {
+    "risk_per_trade": 0.02,      # 改为 2%
+    "atr_multiplier": 2.0,       # 改为 2×ATR
+    "max_position_pct": 0.50,    # 改为 50%
+    # ...
+}
+```
+
+### Q4: 飞书通知不工作？
+
+1. 确认 Webhook 地址正确（包含完整的 `https://`）
+2. 确认飞书机器人已添加到群聊
+3. 检查防火墙是否允许出站 HTTPS 请求
+
+### Q5: 如何查看历史交易记录？
+
+交易记录保存在 `~/.tradingbot/trade_history.json`：
+
+```bash
+cat ~/.tradingbot/trade_history.json | jq
+```
+
+### Q6: 胜率太低怎么办？
+
+本系统设计为**趋势跟踪策略**，典型胜率 40-50%，依靠高盈亏比盈利。
+
+如果胜率持续低于 35%：
+1. 检查是否在市场震荡期运行（趋势策略在震荡市会失效）
+2. 考虑切换到日线周期（`TIMEFRAME=1d`）
+3. 增加 BTC 200 日均线过滤（已内置）
 
 ---
 
 ## 免责声明
 
-> ⚠️ **风险提示**：本项目仅供学习和研究使用。加密货币合约交易存在极高风险，AI 决策不保证盈利。在使用实盘模式前，请充分了解杠杆交易风险，设置合理的止损，并只投入自己能承受损失的资金。
+**本软件仅供学习和研究使用，不构成投资建议。**
+
+加密货币合约交易具有极高风险，可能导致本金全部损失。使用本软件进行交易的一切后果由用户自行承担。
+
+作者不对任何直接或间接损失承担责任。请在充分理解策略逻辑和风险后再考虑是否使用实盘资金。
 
 ---
 
-## License
+## 许可证
 
 MIT License
 
-基于 [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) 开源项目扩展开发，原始框架论文：[arXiv:2412.20138](https://arxiv.org/abs/2412.20138)。
+---
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+## 联系方式
+
+- 项目地址：[GitHub Repo]
+- 问题反馈：[Issues]

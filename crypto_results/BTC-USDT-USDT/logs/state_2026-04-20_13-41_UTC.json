@@ -1,0 +1,13 @@
+{
+  "BTC/USDT:USDT_2026-04-20 13:41 UTC": {
+    "symbol": "BTC/USDT:USDT",
+    "trade_date": "2026-04-20 13:41 UTC",
+    "technical_report": "",
+    "macro_onchain_report": "",
+    "research_report": "",
+    "market_report": "",
+    "onchain_report": "",
+    "investment_plan": "```json\n{\n  \"synthesis\": {\n    \"technical_summary\": \"BTC/USDT:USDT当前处于关键支撑区域（约60,000–61,500美元），日线级别RSI接近超卖但尚未确认反弹，价格在200日均线附近震荡。短期结构呈现潜在双底形态雏形，若突破63,500美元阻力则可能开启新一轮上涨。\",\n    \"macro_summary\": \"宏观层面，美联储降息预期推迟导致风险资产承压，但比特币现货ETF持续净流入提供底部支撑。链上数据显示长期持有者持仓稳定，交易所余额下降，表明抛压减弱，但矿工收入压力和MVRV比率仍处中性偏弱区间。\",\n    \"signal_alignment\": \"MIXED\",\n    \"alignment_notes\": \"技术面显示潜在筑底迹象，但缺乏明确突破确认；宏观与链上数据整体偏积极，但受制于宏观流动性预期转弱。两者在‘下行风险有限’上一致，但在‘上涨动能是否充足’上存在分歧。\"\n  },\n  \"combined_evidence\": {\n    \"bullish_factors\": [\n      \"现货比特币ETF连续多周净流入，机构需求稳健\",\n      \"交易所BTC余额持续下降，反映筹码沉淀\",\n      \"长期持有者（LTH）未实现损益接近盈亏平衡，抛售意愿低\",\n      \"日线级别潜在双底结构形成中，技术反弹概率上升\"\n    ],\n    \"bearish_factors\": [\n      \"美联储点阵图暗示2024年仅一次降息，美元走强压制风险资产\",\n      \"矿工7日平均收入下滑，部分高成本矿工面临压力\",\n      \"BTC未能有效突破63,500美元关键阻力位，上涨动能不足\",\n      \"MVRV Z-Score处于0附近，缺乏显著低估或过热信号\"\n    ],\n    \"neutral_factors\": [\n      \"波动率指数（BVOL）处于年内低位，市场观望情绪浓厚\",\n      \"期权Put/Call比率接近1.0，多空博弈均衡\"\n    ]\n  },\n  \"signal_quality\": {\n    \"data_completeness\": \"HIGH\",\n    \"signal_clarity\": \"MIXED\",\n    \"confidence_level\": 6\n  },\n  \"key_risks\": [\n      \"美国CPI或非农数据超预期强化鹰派立场，引发流动性担忧\",\n      \"比特币ETF资金流突然逆转，削弱链上支撑逻辑\",\n      \"技术面假突破导致空头回补失败，进一步下探58,000美元\",\n      \"地缘政治事件引发全球避险，但未必利好加密资产\"\n  ],\n  \"research_conclusion\": \"综合来看，BTC/USDT:USDT当前处于宏观与技术面的过渡阶段。链上指标显示市场抛压已显著缓解，长期持有行为稳固，为价格提供坚实底部；然而，宏观流动性预期的边际恶化抑制了上涨动能，导致价格在关键技术区间内反复震荡。技术结构虽有筑底迹象，但缺乏成交量与动量确认，短期内方向选择仍依赖外部催化剂（如宏观数据、ETF流量变化）。整体证据偏向中性略偏多，但信号清晰度不足，需警惕假突破与宏观扰动带来的双向波动风险。建议投资组合经理关注63,500美元突破有效性及ETF每日资金流变化，作为下一阶段趋势确认的关键观察点。\"\n}\n```",
+    "final_trade_decision": "## 1. Final Decision\nLONG-LITE\n\n## 2. Execution Parameters (Python ATR-Model, NOT LLM-generated)\n- Direction: LONG\n- Leverage: 1x  [No leverage — risk controlled via position size]\n- Position Size: 17.0% of capital (170.0 USDT)\n- Entry: MARKET\n- Stop-Loss: 73801.9821  [= entry - 1.5×ATR14(883.8786)]\n- Take-Profit 1: 77779.4357  [R/R = 2.0:1]\n- Take-Profit 2: 79768.1625  [R/R = 3.5:1]\n- Time Horizon: 1-3 days (daily swing)\n- Max Loss This Trade: 10.0 USDT (1.0% of capital)\n\n## 3. LLM Direction Rationale\n链上数据与ETF资金流显示底部支撑稳固，长期持有者抛压减弱，构成温和看涨基础。然而宏观流动性预期转弱及技术面缺乏有效突破确认，限制了上涨动能，需警惕假突破风险。\n\n## 4. Risk Parameters (Hardcoded Math — Cannot Be Overridden by LLM)\n- ATR14: 883.8786 USDT\n- Stop Distance: 1325.8179 USDT\n- Conviction Score: 6/10\n- Risk Per Trade: 1.0%"
+  }
+}

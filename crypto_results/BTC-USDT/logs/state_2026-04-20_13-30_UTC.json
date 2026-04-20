@@ -1,0 +1,13 @@
+{
+  "BTC/USDT_2026-04-20 13:30 UTC": {
+    "symbol": "BTC/USDT",
+    "trade_date": "2026-04-20 13:30 UTC",
+    "technical_report": "",
+    "macro_onchain_report": "",
+    "research_report": "",
+    "market_report": "",
+    "onchain_report": "",
+    "investment_plan": "```json\n{\n  \"synthesis\": {\n    \"technical_summary\": \"BTC/USDT近期在日线级别维持于关键支撑区间60,000–62,000 USDT震荡，短期RSI处于中性区域（约52），未出现明显超买或超卖信号。价格结构呈现收敛三角形整理形态，波动率持续收窄，暗示即将选择方向。周线级别仍位于200周均线上方，长期趋势偏多。\",\n    \"macro_summary\": \"宏观层面，美联储降息预期推迟压制风险资产偏好，但比特币现货ETF持续净流入提供底层支撑。链上数据显示，长期持有者（LTH）持仓量稳定，未出现大规模抛售；交易所余额继续下降，表明市场浮筹减少。MVRV比率接近1.0，估值处于历史中性水平。\",\n    \"signal_alignment\": \"MIXED\",\n    \"alignment_notes\": \"技术面处于方向选择前的中性整理状态，而宏观与链上指标整体偏积极但缺乏强劲催化剂。两者均未发出明确单边信号，但宏观/链上略偏多，技术面则等待突破确认，故归类为混合信号。\"\n  },\n  \"combined_evidence\": {\n    \"bullish_factors\": [\n      \"现货ETF连续数周净流入，机构需求稳健\",\n      \"交易所BTC余额降至两年低位，抛压减轻\",\n      \"长期持有者持仓稳定，未出现恐慌性卖出\",\n      \"周线级别仍处于200周均线上方，长期结构完好\"\n    ],\n    \"bearish_factors\": [\n      \"美联储政策路径偏鹰，美元走强压制风险资产\",\n      \"短期波动率压缩至低位，可能引发剧烈波动但方向不明\",\n      \"矿工收入承压，部分高成本矿工或被迫出售BTC\"\n    ],\n    \"neutral_factors\": [\n      \"RSI与MACD均处于中性区域，无明确动能信号\",\n      \"MVRV比率接近1.0，估值既不高估也不低估\",\n      \"期权市场Put/Call比率均衡，市场情绪观望\"\n    ]\n  },\n  \"signal_quality\": {\n    \"data_completeness\": \"HIGH\",\n    \"signal_clarity\": \"MIXED\",\n    \"confidence_level\": 6\n  },\n  \"key_risks\": [\n      \"美国CPI或非农数据超预期导致宏观情绪急转\",\n      \"BTC未能有效突破64,000 USDT阻力位，形成假突破后回落\",\n      \"地缘政治事件引发流动性紧缩，波及加密市场\",\n      \"监管动态突变（如ETF审批暂停或交易所审查）\"\n  ],\n  \"research_conclusion\": \"当前BTC/USDT处于技术整理与宏观观望的交汇点。链上数据和机构资金流提供结构性支撑，但缺乏短期催化剂推动价格突破。技术形态显示变盘临近，但方向取决于外部宏观变量（尤其是美债收益率与美元走势）。综合来看，市场处于低风险溢价状态，上行需放量突破64,000 USDT确认，下行则需跌破60,000 USDT并伴随链上抛售信号才构成趋势反转。\\n\\n建议投资组合经理关注未来两周关键经济数据发布窗口，并密切监控期权市场Gamma暴露变化及ETF每日资金流。当前证据不足以支持单边押注，但可为潜在突破做好情景预案。\"\n}\n```",
+    "final_trade_decision": "## 1. Final Decision\nCLOSE\n\n## 2. Note\nATR data unavailable — position sizing impossible. Defaulting to CLOSE for capital safety.\nLLM intended: LONG-LITE (conviction 6/10)"
+  }
+}

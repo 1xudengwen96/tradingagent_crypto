@@ -27,26 +27,26 @@ logger = logging.getLogger(__name__)
 def create_crypto_macro_onchain_analyst(llm):
     """
     创建宏观与链上分析师节点
-    
+
     职责：
     - 监控大额资金流向（交易所钱包、巨鲸转账）
     - 评估宏观事件影响（ETF、美联储决议、监管政策）
     - 分析市场情绪（恐慌/贪婪、新闻情绪）
     - 订单簿深度和流动性分析
-    
+
     Args:
         llm: LLM 客户端
-    
+
     Returns:
         crypto_macro_onchain_analyst_node 函数
     """
-    
+
     def crypto_macro_onchain_analyst_node(state) -> Dict[str, Any]:
         current_date = state["trade_date"]
         symbol = state["company_of_interest"]
         timeframe = state.get("timeframe", "4h")
         instrument_context = build_instrument_context(symbol)
-        
+
         # 工具集：宏观和链上数据
         tools = [
             get_crypto_ticker,
@@ -55,100 +55,108 @@ def create_crypto_macro_onchain_analyst(llm):
             get_funding_rate,
             get_crypto_global_news,
         ]
-        
-        system_message = f"""You are a cryptocurrency macro and on-chain analyst specializing in market structure, capital flows, and sentiment analysis for 4H/Daily trading.
 
-**Core Principles:**
-1. **Macro-First**: Focus on events that materially impact 4H/Daily trends (ETF approvals, Fed decisions, regulatory changes, major exchange flows).
-2. **Data-Driven**: All sentiment claims must cite specific data (e.g., "Exchange inflow +15,000 BTC in 24h").
-3. **Signal Filtering**: Ignore noise. Only report events with measurable market impact.
-4. **Structured Output**: Your response MUST follow the JSON format below.
+        # 系统提示词模板：使用 .format() 替代 f-string 以避免 JSON 花括号转义问题
+        system_message_template = """你是一位加密货币宏观和链上数据分析师，专注于市场结构、资金流向和情绪分析，服务于 4H/日线级别交易。
 
-**Workflow (execute in order):**
-1. Call `get_crypto_ticker` for price context.
-2. Call `get_orderbook` with depth=20 to analyze liquidity and bid/ask pressure.
-3. Call `get_open_interest` for positioning scale and trends.
-4. Call `get_funding_rate` for cost-of-carry and sentiment bias.
-5. Call `get_crypto_global_news` (limit=15) for macro events and market sentiment.
+**核心原则：**
+1. **宏观优先**：聚焦对 4H/日线趋势有实质性影响的事件（ETF 审批、美联储决议、监管变化、主要交易所资金流向）。
+2. **数据驱动**：所有情绪观点必须引用具体数据（例如"24 小时内交易所流入 +15,000 BTC"）。
+3. **信号过滤**：忽略噪音，只报告有可衡量市场影响的事件。
+4. **结构化输出**：你的回答必须遵循下面的 JSON 格式。
 
-**Structured Output Format (MUST follow):**
+**工作流程（按顺序执行）：**
+1. 调用 `get_crypto_ticker` 获取价格上下文。
+2. 调用 `get_orderbook`，深度=20，分析流动性和买卖盘压力。
+3. 调用 `get_open_interest` 获取持仓量规模和趋势。
+4. 调用 `get_funding_rate` 获取资金成本和情绪偏向。
+5. 调用 `get_crypto_global_news`（limit=15）获取宏观事件和市场情绪。
+
+**结构化输出格式（必须遵循）：**
 ```json
 {{
   "evidence": {{
     "ticker": {{
-      "price": <float>,
-      "change_24h_pct": <float>,
-      "volume_24h_usdt": <float>
+      "price": <当前价格>,
+      "change_24h_pct": <24 小时涨跌幅>,
+      "volume_24h_usdt": <24 小时成交量>
     }},
     "orderbook": {{
-      "bid_ask_spread_pct": <float or null>,
-      "bid_ask_ratio": <float or null>,
-      "top_bid_volume": <float or null>,
-      "top_ask_volume": <float or null>
+      "bid_ask_spread_pct": <买卖价差百分比>,
+      "bid_ask_ratio": <买卖盘比例>,
+      "top_bid_volume": <最高买盘量>,
+      "top_ask_volume": <最高卖盘量>
     }},
     "open_interest": {{
-      "oi_usdt": <float or null>,
-      "oi_change_pct": <float or null>,
+      "oi_usdt": <持仓量 USDT>,
+      "oi_change_pct": <持仓量变化百分比>,
       "oi_trend": "RISING|FALLING|STABLE"
     }},
     "funding_rate": {{
-      "current_rate_pct": <float or null>,
-      "annualized_pct": <float or null>,
+      "current_rate_pct": <当前资金费率百分比>,
+      "annualized_pct": <年化资金费率百分比>,
       "bias": "LONGS_PAY|SHORTS_PAY|NEUTRAL"
     }},
     "news_sentiment": {{
-      "total_articles": <int>,
-      "bullish_count": <int>,
-      "bearish_count": <int>,
-      "neutral_count": <int>,
-      "key_events": ["<event 1>", "<event 2>", ...]
+      "total_articles": <文章总数>,
+      "bullish_count": <看涨文章数>,
+      "bearish_count": <看跌文章数>,
+      "neutral_count": <中性文章数>,
+      "key_events": ["<事件 1>", "<事件 2>", ...]
     }}
   }},
   "objective_signals": {{
     "liquidity_signal": "HIGH|NORMAL|LOW",
     "positioning_signal": "CROWDED_LONGS|CROWDED_SHORTS|BALANCED",
     "sentiment_signal": "BULLISH|BEARISH|NEUTRAL",
-    "macro_headwinds": ["<headwind 1>", ...],
-    "macro_tailwinds": ["<tailwind 1>", ...]
+    "macro_headwinds": ["<逆风因素 1>", ...],
+    "macro_tailwinds": ["<顺风因素 1>", ...]
   }},
   "analysis": {{
-    "liquidity_analysis": "<2-3 sentences on orderbook depth and slippage risk>",
-    "positioning_analysis": "<2-3 sentences on OI and funding rate implications>",
-    "sentiment_analysis": "<2-3 sentences on news sentiment and social mood>",
-    "macro_events": "<summary of material events impacting 4H/Daily trend>",
-    "key_observations": ["<observation 1>", "<observation 2>", ...]
+    "liquidity_analysis": "<2-3 句话分析订单簿深度和滑点风险>",
+    "positioning_analysis": "<2-3 句话分析持仓量和资金费率含义>",
+    "sentiment_analysis": "<2-3 句话分析新闻情绪和市场心态>",
+    "macro_events": "<影响 4H/日线趋势的重大事件总结>",
+    "key_observations": ["<观察点 1>", "<观察点 2>", ...]
   }},
   "conclusion": {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
-    "confidence": <1-10 integer>,
+    "confidence": <1-10 整数>,
     "risk_level": "HIGH|MODERATE|LOW",
-    "reasoning": "<concise summary>"
+    "reasoning": "<简明总结>"
   }}
 }}
 
-**Important Rules:**
-- If any data field is unavailable, set it to `null` and mention in analysis.
-- Do NOT output any text outside the JSON structure.
-- All numerical values must be from tool responses, NOT estimated.
-- Filter news: Only include events with measurable market impact (ETF, regulation, exchange hacks, major partnerships).
+**重要规则：**
+- 如果任何数据字段不可用，设为 `null` 并在分析中说明。
+- 禁止在 JSON 结构外输出任何文本。
+- 所有数值必须来自工具响应，禁止估算。
+- 新闻过滤：只包含有可衡量市场影响的事件（ETF、监管、交易所被盗、重大合作）。
 
 {instrument_context}
-Current date: {current_date}
-""" + get_language_instruction()
-        
+当前日期：{current_date}
+"""
+        # 先获取语言指令，避免在 .format() 后被错误解析
+        lang_instruction = get_language_instruction()
+        system_message = system_message_template.format(
+            instrument_context=instrument_context,
+            current_date=current_date
+        ) + lang_instruction
+
+        # 使用 ChatPromptTemplate 的 partial 来预先填充 system_message
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_message),
+            ("system", "{system_message}"),
             MessagesPlaceholder(variable_name="messages"),
         ])
-        
-        chain = prompt | llm.bind_tools(tools)
+
+        chain = prompt.partial(system_message=system_message) | llm.bind_tools(tools)
         result = chain.invoke(state["messages"])
-        
+
         report_content = result.content if len(result.tool_calls) == 0 else ""
-        
+
         return {
             "messages": [result],
             "macro_onchain_report": report_content,
         }
-    
+
     return crypto_macro_onchain_analyst_node

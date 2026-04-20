@@ -3,10 +3,10 @@
 CryptoTradingAgentsGraph — 加密货币合约交易多智能体系统主类
 
 与原始 TradingAgentsGraph 的区别：
-1. 使用双 LLM 配置：Claude Opus（深度分析）+ GPT（快速决策）
-2. 数据源：Bitget CCXT 代替 yfinance
+1. 使用双 LLM 配置：Qwen-Max（深度分析）+ Qwen-Plus（快速决策）
+2. 数据源：Binance CCXT 代替 yfinance
 3. 决策输出：LONG/LONG-LITE/SHORT/SHORT-LITE/CLOSE + 杠杆 + 止损 + 止盈
-4. 自动执行层：通过 BitgetExecutor 将决策转为真实 API 订单
+4. 自动执行层：通过 BinanceExecutor 将决策转为真实 API 订单
 """
 
 import os
@@ -41,7 +41,8 @@ from tradingagents.agents.utils.crypto_tools import (
     detect_volume_anomaly,
 )
 
-from tradingagents.execution.bitget_executor import BitgetExecutor, SignalParser
+from tradingagents.execution.binance_executor import BinanceExecutor, SignalParser
+from tradingagents.execution.shadow_executor import ShadowExecutor
 
 from .conditional_logic import ConditionalLogic
 from .crypto_setup import CryptoGraphSetup
@@ -150,17 +151,30 @@ class CryptoTradingAgentsGraph:
         self.reflector = Reflector(self.quick_thinking_llm)
 
         # ---- Execution layer (optional) ----------------------------------
-        self.executor: Optional[BitgetExecutor] = None
+        self.executor = None
+        self.shadow_executor = None
+        
         if auto_execute:
-            self.executor = BitgetExecutor(
-                api_key=self.config.get("bitget_api_key", ""),
-                secret=self.config.get("bitget_secret", ""),
-                passphrase=self.config.get("bitget_passphrase", ""),
-                sandbox=self.config.get("sandbox_mode", True),
-                margin_mode=self.config.get("margin_mode", "isolated"),
-                default_leverage=self.config.get("default_leverage", 5),
-                account_type=self.config.get("account_type", "classic"),
-            )
+            # Check if shadow mode is enabled
+            shadow_mode = self.config.get("shadow_mode", False)
+            
+            if shadow_mode:
+                # Shadow mode: use virtual trading with real market data
+                self.shadow_executor = ShadowExecutor(
+                    initial_balance=self.config.get("capital_usdt", 1000.0),
+                    slippage=self.config.get("slippage", 0.0005),
+                )
+                logger.info("Shadow mode ENABLED — virtual trading with real market data")
+            else:
+                # Real mode: use Binance executor
+                self.executor = BinanceExecutor(
+                    api_key=self.config.get("binance_api_key", ""),
+                    secret=self.config.get("binance_secret", ""),
+                    sandbox=self.config.get("sandbox_mode", True),
+                    margin_mode=self.config.get("margin_mode", "isolated"),
+                    default_leverage=self.config.get("default_leverage", 5),
+                )
+                logger.info("Real trading mode ENABLED — actual orders will be placed")
 
         # ---- State tracking ----------------------------------------------
         self.curr_state = None
@@ -228,6 +242,7 @@ class CryptoTradingAgentsGraph:
         decision_text: str,
         symbol: str,
         capital_usdt: Optional[float] = None,
+        current_price: Optional[float] = None,
     ):
         """Parse the portfolio manager's decision text and place orders.
 
@@ -237,31 +252,69 @@ class CryptoTradingAgentsGraph:
         symbol : str
         capital_usdt : float, optional
             Overrides config value if provided.
+        current_price : float, optional
+            Current market price (required for shadow mode)
 
         Returns
         -------
-        ExecutionResult or None (if auto_execute=False)
+        ExecutionResult or ShadowExecutionResult or None
         """
-        if not self.auto_execute or self.executor is None:
+        if not self.auto_execute:
             logger.info("auto_execute=False — skipping order placement")
             return None
-
-        capital = capital_usdt or self.config.get("capital_usdt", 1000.0)
-        signal = SignalParser.parse(decision_text)
-        result = self.executor.execute(signal, symbol, capital)
-
-        if result.success:
-            logger.info(
-                "Order(s) placed for %s | direction=%s leverage=%sx | order_ids=%s",
-                symbol,
-                signal.direction,
-                signal.leverage,
-                [o.get("id") for o in result.orders],
-            )
-        else:
-            logger.error("Order placement FAILED for %s: %s", symbol, result.error)
-
-        return result
+        
+        # Shadow mode
+        if self.shadow_executor is not None:
+            if current_price is None:
+                logger.warning("Shadow mode requires current_price — fetching from exchange...")
+                # Fetch current price from Binance
+                try:
+                    from tradingagents.dataflows.binance_vendor import get_binance_exchange
+                    exchange = get_binance_exchange()
+                    ticker = exchange.fetch_ticker(symbol)
+                    current_price = ticker['last']
+                except Exception as e:
+                    logger.error(f"Failed to fetch current price: {e}")
+                    return None
+            
+            capital = capital_usdt or self.config.get("capital_usdt", 1000.0)
+            signal = SignalParser.parse(decision_text)
+            result = self.shadow_executor.execute(signal, symbol, capital, current_price)
+            
+            if result.success:
+                logger.info(
+                    "[SHADOW] Order(s) placed for %s | direction=%s leverage=%sx | PnL=%s",
+                    symbol,
+                    signal.direction,
+                    signal.leverage,
+                    f"{result.pnl:.2f} USDT" if result.pnl != 0 else "N/A",
+                )
+            else:
+                logger.error("[SHADOW] Order placement FAILED for %s: %s", symbol, result.error)
+            
+            return result
+        
+        # Real trading mode
+        if self.executor is not None:
+            capital = capital_usdt or self.config.get("capital_usdt", 1000.0)
+            signal = SignalParser.parse(decision_text)
+            result = self.executor.execute(signal, symbol, capital)
+            
+            if result.success:
+                logger.info(
+                    "Order(s) placed for %s | direction=%s leverage=%sx | order_ids=%s",
+                    symbol,
+                    signal.direction,
+                    signal.leverage,
+                    [o.get("id") for o in result.orders],
+                )
+            else:
+                logger.error("Order placement FAILED for %s: %s", symbol, result.error)
+            
+            return result
+        
+        logger.warning("No executor configured — skipping order placement")
+        return None
 
     def run(self, symbol: str, timeframe: Optional[str] = None) -> tuple:
         """Convenience method: analyse + execute for one symbol.
@@ -341,6 +394,7 @@ class CryptoTradingAgentsGraph:
             "onchain_report": final_state.get("macro_onchain_report", ""),
             "investment_plan": final_state.get("investment_plan", ""),
             "final_trade_decision": final_state.get("final_trade_decision", ""),
+            "risk_assessment": final_state.get("risk_assessment", ""),
         }
 
         safe_symbol = symbol.replace("/", "-").replace(":", "-")

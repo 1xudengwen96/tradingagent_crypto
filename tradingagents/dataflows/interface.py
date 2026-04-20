@@ -26,17 +26,29 @@ from .alpha_vantage import (
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
 
-# Bitget crypto vendor (PRIMARY for all crypto data)
-from .bitget_vendor import (
-    get_crypto_ohlcv as bitget_get_crypto_ohlcv,
-    get_crypto_indicators as bitget_get_crypto_indicators,
-    get_funding_rate as bitget_get_funding_rate,
-    get_orderbook as bitget_get_orderbook,
-    get_open_interest as bitget_get_open_interest,
-    get_crypto_news as bitget_get_crypto_news,
-    get_crypto_global_news as bitget_get_crypto_global_news,
-    get_crypto_ticker as bitget_get_crypto_ticker,
-    detect_volume_anomaly as bitget_detect_volume_anomaly,
+# Binance crypto vendor (PRIMARY for all crypto data)
+from .binance_vendor import (
+    get_crypto_ohlcv as binance_get_crypto_ohlcv,
+    get_crypto_indicators as binance_get_crypto_indicators,
+    get_funding_rate as binance_get_funding_rate,
+    get_orderbook as binance_get_orderbook,
+    get_open_interest as binance_get_open_interest,
+    get_crypto_news as binance_get_crypto_news,
+    get_crypto_global_news as binance_get_crypto_global_news,
+    get_crypto_ticker as binance_get_crypto_ticker,
+    detect_volume_anomaly as binance_detect_volume_anomaly,
+)
+
+# Gate.io crypto vendor (FALLBACK for when Binance is unavailable)
+from .gate_vendor import (
+    get_gate_ohlcv,
+    get_gate_indicators,
+    get_gate_funding_rate,
+    get_gate_orderbook,
+    get_gate_open_interest,
+    get_gate_crypto_global_news,
+    get_gate_ticker,
+    detect_gate_volume_anomaly,
 )
 
 # Configuration and routing logic
@@ -93,7 +105,7 @@ TOOLS_CATEGORIES = {
 VENDOR_LIST = [
     "yfinance",
     "alpha_vantage",
-    "bitget",
+    "binance",
 ]
 
 # Mapping of methods to their vendor-specific implementations
@@ -138,33 +150,41 @@ VENDOR_METHODS = {
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
     },
-    # ── crypto_data (Bitget perpetual contracts) ──
+    # ── crypto_data (Binance perpetual contracts, Gate.io as fallback) ──
     "get_crypto_ohlcv": {
-        "bitget": bitget_get_crypto_ohlcv,
+        "binance": binance_get_crypto_ohlcv,
+        "gate": get_gate_ohlcv,
     },
     "get_crypto_indicators": {
-        "bitget": bitget_get_crypto_indicators,
+        "binance": binance_get_crypto_indicators,
+        "gate": get_gate_indicators,
     },
     "get_funding_rate": {
-        "bitget": bitget_get_funding_rate,
+        "binance": binance_get_funding_rate,
+        "gate": get_gate_funding_rate,
     },
     "get_orderbook": {
-        "bitget": bitget_get_orderbook,
+        "binance": binance_get_orderbook,
+        "gate": get_gate_orderbook,
     },
     "get_open_interest": {
-        "bitget": bitget_get_open_interest,
+        "binance": binance_get_open_interest,
+        "gate": get_gate_open_interest,
     },
     "get_crypto_news": {
-        "bitget": bitget_get_crypto_news,
+        "binance": binance_get_crypto_news,
     },
     "get_crypto_global_news": {
-        "bitget": bitget_get_crypto_global_news,
+        "binance": binance_get_crypto_global_news,
+        "gate": get_gate_crypto_global_news,
     },
     "get_crypto_ticker": {
-        "bitget": bitget_get_crypto_ticker,
+        "binance": binance_get_crypto_ticker,
+        "gate": get_gate_ticker,
     },
     "detect_volume_anomaly": {
-        "bitget": bitget_detect_volume_anomaly,
+        "binance": binance_detect_volume_anomaly,
+        "gate": detect_gate_volume_anomaly,
     },
 }
 
@@ -206,6 +226,7 @@ def route_to_vendor(method: str, *args, **kwargs):
         if vendor not in fallback_vendors:
             fallback_vendors.append(vendor)
 
+    last_error = None
     for vendor in fallback_vendors:
         if vendor not in VENDOR_METHODS[method]:
             continue
@@ -214,8 +235,14 @@ def route_to_vendor(method: str, *args, **kwargs):
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
         try:
-            return impl_func(*args, **kwargs)
-        except AlphaVantageRateLimitError:
-            continue  # Only rate limits trigger fallback
+            result = impl_func(*args, **kwargs)
+            # Check if result is an error message
+            if result and ("Error" in result or "error" in result):
+                last_error = result
+                continue  # Try next vendor
+            return result
+        except Exception as e:
+            last_error = str(e)
+            continue  # Try next vendor on any error
 
-    raise RuntimeError(f"No available vendor for '{method}'")
+    raise RuntimeError(f"No available vendor for '{method}'. Last error: {last_error}")

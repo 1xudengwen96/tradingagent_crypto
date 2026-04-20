@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 # ---- Logging setup -------------------------------------------------------
 logging.basicConfig(
@@ -100,126 +100,100 @@ def _get_webhook(env_var: str) -> str:
 def send_feishu_multi_notifications(symbol: str, final_state: dict, execution_result, now_str: str) -> None:
     """Send AI analysis results to multiple Feishu bots, each representing a different role.
 
+    固定输出格式（Fixed Format）:
+    每个角色必须包含以下字段：
+    - 角色名称（带 emoji）
+    - 交易对
+    - 时间（UTC）
+    - 分析内容（markdown 格式）
+
     Roles:
-    - 📊 Market Analyst (FEISHU_WEBHOOK_ANALYST)
-    - 😊 Sentiment Analyst (FEISHU_WEBHOOK_SENTIMENT) - optional
-    - 📰 News Analyst (FEISHU_WEBHOOK_NEWS) - optional
-    - 💎 Fundamentals/Onchain Analyst (FEISHU_WEBHOOK_FUNDAMENTALS) - optional
-    - ⚖️ Research Manager (FEISHU_WEBHOOK_MANAGER)
-    - 🛡️ Risk Manager (FEISHU_WEBHOOK_RISK)
-    - 🎯 Final Decision / Trader (FEISHU_WEBHOOK_TRADER)
-    - 📋 Summary Card (FEISHU_WEBHOOK_URL) - fallback/general
+    - 📈 市场分析师 (FEISHU_WEBHOOK_ANALYST)
+    - 😊 情绪分析师 (FEISHU_WEBHOOK_SENTIMENT) - optional
+    - 📰 新闻分析师 (FEISHU_WEBHOOK_NEWS) - optional
+    - 💎 宏观/链上分析师 (FEISHU_WEBHOOK_FUNDAMENTALS)
+    - ⚖️ 研究经理 (FEISHU_WEBHOOK_MANAGER)
+    - 🛡️ 风险经理 (FEISHU_WEBHOOK_RISK)
+    - 🎯 最终决策 (FEISHU_WEBHOOK_TRADER)
     """
 
-    # ─── 1. 📈 Market Analyst Report ──────────────────────────────────────
-    if final_state.get("market_report"):
+    # ─── 1. 📈 市场分析师 Report ──────────────────────────────────────
+    if final_state.get("technical_report") or final_state.get("market_report"):
         webhook = _get_webhook("FEISHU_WEBHOOK_ANALYST") or _get_webhook("FEISHU_WEBHOOK_URL")
         if webhook:
-            content = final_state["market_report"][:3000]
+            content = final_state.get("technical_report") or final_state.get("market_report", "")[:3000]
             fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n📈 市场分析师"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": "**角色**\n📈 市场分析师"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
             ]
             _send_feishu_card(webhook, f"📈 {symbol} 市场分析报告", "blue", content, fields)
 
-    # ─── 2. 😊 Sentiment Analyst Report ──────────────────────────────────
+    # ─── 2. 😊 情绪分析师 Report ──────────────────────────────────
     if final_state.get("sentiment_report"):
         webhook = _get_webhook("FEISHU_WEBHOOK_SENTIMENT") or _get_webhook("FEISHU_WEBHOOK_URL")
         if webhook:
             content = final_state["sentiment_report"][:3000]
             fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n😊 情绪分析师"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": "**角色**\n😊 情绪分析师"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
             ]
             _send_feishu_card(webhook, f"😊 {symbol} 情绪分析报告", "blue", content, fields)
 
-    # ─── 3. 📰 News Analyst Report ───────────────────────────────────────
+    # ─── 3. 📰 新闻分析师 Report ───────────────────────────────────────
     if final_state.get("news_report"):
         webhook = _get_webhook("FEISHU_WEBHOOK_NEWS") or _get_webhook("FEISHU_WEBHOOK_URL")
         if webhook:
             content = final_state["news_report"][:3000]
             fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n📰 新闻分析师"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": "**角色**\n📰 新闻分析师"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
             ]
             _send_feishu_card(webhook, f"📰 {symbol} 新闻分析报告", "blue", content, fields)
 
-    # ─── 4. 💎 Fundamentals/Onchain Analyst Report ───────────────────────
-    if final_state.get("fundamentals_report") or final_state.get("onchain_report"):
+    # ─── 4. 💎 宏观/链上分析师 Report ───────────────────────────────
+    if final_state.get("macro_onchain_report") or final_state.get("onchain_report"):
         webhook = _get_webhook("FEISHU_WEBHOOK_FUNDAMENTALS") or _get_webhook("FEISHU_WEBHOOK_URL")
         if webhook:
-            report = final_state.get("fundamentals_report") or final_state.get("onchain_report", "")
-            content = report[:3000]
-            role_icon = "💎" if final_state.get("fundamentals_report") else "🔗"
-            role_name = "基本面分析师" if final_state.get("fundamentals_report") else "链上数据分析师"
+            content = final_state.get("macro_onchain_report") or final_state.get("onchain_report", "")[:3000]
             fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n{role_icon} {role_name}"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": "**角色**\n💎 宏观/链上分析师"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
             ]
-            _send_feishu_card(webhook, f"{role_icon} {symbol} {role_name}报告", "blue", content, fields)
+            _send_feishu_card(webhook, f"💎 {symbol} 宏观/链上分析报告", "blue", content, fields)
 
-    # ─── 5. ⚖️ Research Manager (Bull/Bear Debate Summary) ──────────────
-    debate_state = final_state.get("investment_debate_state", {})
-    if debate_state.get("judge_decision"):
+    # ─── 5. ⚖️ 研究经理 (综合裁决) ────────────────────────────────────
+    if final_state.get("research_report"):
         webhook = _get_webhook("FEISHU_WEBHOOK_MANAGER") or _get_webhook("FEISHU_WEBHOOK_URL")
         if webhook:
-            content = debate_state["judge_decision"][:3000]
-
-            # Add bull/bear context if available
-            bull_hist = debate_state.get("bull_history", [])
-            bear_hist = debate_state.get("bear_history", [])
-            if bull_hist or bear_hist:
-                context_parts = []
-                if bull_hist:
-                    last_bull = bull_hist[-1] if isinstance(bull_hist, list) else bull_hist
-                    context_parts.append(f"**🐂 多头观点**\n{last_bull[:500]}")
-                if bear_hist:
-                    last_bear = bear_hist[-1] if isinstance(bear_hist, list) else bear_hist
-                    context_parts.append(f"**🐻 空头观点**\n{last_bear[:500]}")
-                if context_parts:
-                    content = "\n\n".join(context_parts) + f"\n\n---\n\n**⚖️ 研究经理裁决**\n\n{content}"
-
+            content = final_state.get("research_report", "")[:3000]
             fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n⚖️ 研究经理"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": "**角色**\n⚖️ 研究经理"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
             ]
             _send_feishu_card(webhook, f"⚖️ {symbol} 研究经理裁决", "orange", content, fields)
 
-    # ─── 6. 💼 Trader Recommendation ─────────────────────────────────────
-    if final_state.get("trader_investment_plan"):
-        # Trader is grouped with risk manager or sent separately if trader webhook exists
-        webhook = _get_webhook("FEISHU_WEBHOOK_TRADER")
-        if webhook:
-            content = final_state["trader_investment_plan"][:3000]
-            fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n💼 交易员"}},
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
-            ]
-            _send_feishu_card(webhook, f"💼 {symbol} 交易员建议", "blue", content, fields)
-
-    # ─── 7. 🛡️ Risk Manager Decision ────────────────────────────────────
-    if final_state.get("risk_debate_state", {}).get("judge_decision"):
+    # ─── 6. 🛡️ 风险经理 Decision ────────────────────────────────────
+    if final_state.get("risk_assessment"):
         webhook = _get_webhook("FEISHU_WEBHOOK_RISK") or _get_webhook("FEISHU_WEBHOOK_URL")
         if webhook:
-            content = final_state["risk_debate_state"]["judge_decision"][:3000]
+            content = final_state.get("risk_assessment", "")[:3000]
             fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n🛡️ 风险经理"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": "**角色**\n🛡️ 风险经理"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**交易对**\n{symbol}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
             ]
             _send_feishu_card(webhook, f"🛡️ {symbol} 风险评估", "orange", content, fields)
 
-    # ─── 8. 🎯 Final Decision ────────────────────────────────────────────
-    if final_state.get("final_trade_decision"):
+    # ─── 7. 🎯 最终决策 (Trader/Portfolio Manager) ────────────────────
+    if final_state.get("final_trade_decision") or final_state.get("investment_plan"):
         webhook = _get_webhook("FEISHU_WEBHOOK_TRADER") or _get_webhook("FEISHU_WEBHOOK_URL")
         if webhook:
-            content = final_state["final_trade_decision"][:3000]
+            content = final_state.get("final_trade_decision") or final_state.get("investment_plan", "")[:3000]
 
             # Parse execution status
             status_emoji = "⏸️ 仅分析"
@@ -228,13 +202,13 @@ def send_feishu_multi_notifications(symbol: str, final_state: dict, execution_re
                 if execution_result.success:
                     order_ids = [o.get("id", "?") for o in execution_result.orders]
                     status_emoji = "✅ 已下单"
-                    status_text = f"订单: {', '.join(order_ids)}"
+                    status_text = f"订单：{', '.join(order_ids)}"
                 else:
                     status_emoji = "❌ 下单失败"
                     status_text = execution_result.error or "未知错误"
 
             fields = [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**角色**\n🎯 最终决策"}},
+                {"is_short": True, "text": {"tag": "lark_md", "content": "**角色**\n🎯 最终决策"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**执行状态**\n{status_emoji} {status_text}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**时间**\n{now_str}"}},
             ]
@@ -479,7 +453,7 @@ def run_analysis(graph, symbols: list, auto_execute: bool, timeframe: str = "4h"
 
     for symbol in symbols:
         logger.info("▶ Analysing %s (timeframe=%s) ...", symbol, timeframe)
-        logger.info("📡 Step 1: Fetching OHLCV K-line data from Bitget exchange...")
+        logger.info("📡 Step 1: Fetching OHLCV K-line data from Binance exchange...")
         logger.info("📡 Step 2: Computing technical indicators (SMA, EMA, MACD, RSI, Bollinger)...")
         logger.info("📡 Step 3: Fetching funding rate, orderbook, and open interest...")
         logger.info("🤖 Step 4: Running Market Analyst agent...")
@@ -547,9 +521,10 @@ def build_graph(auto_execute: bool, symbols: list, timeframe: str = "4h"):
     # Allow runtime overrides via environment variables
     config_override = {
         "crypto_symbols": symbols,
-        "sandbox_mode": os.getenv("BITGET_SANDBOX", "true").lower() != "false",
-        "account_type": os.getenv("BITGET_ACCOUNT_TYPE", "classic"),
-        "capital_usdt": float(os.getenv("CAPITAL_USDT", CRYPTO_CONFIG["capital_usdt"])),
+        "sandbox_mode": os.getenv("BINANCE_SANDBOX", "false").lower() != "false",
+        "shadow_mode": os.getenv("SHADOW_MODE", "true").lower() == "true",
+        "capital_usdt": float(os.getenv("SHADOW_INITIAL_BALANCE", os.getenv("CAPITAL_USDT", CRYPTO_CONFIG["capital_usdt"]))),
+        "slippage": float(os.getenv("SHADOW_SLIPPAGE", CRYPTO_CONFIG.get("slippage", 0.0005))),
         "timeframe": os.getenv("TIMEFRAME", timeframe),
     }
 
@@ -591,11 +566,19 @@ def main():
     logger.info("Graph ready.")
 
     if auto_execute:
-        balance = graph.fetch_account_balance()
-        logger.info(
-            "Bitget account balance (USDT): total=%.2f free=%.2f",
-            balance.get("total", 0), balance.get("free", 0),
-        )
+        # Check if shadow mode is enabled
+        if graph.shadow_executor is not None:
+            # Shadow mode: print virtual account summary
+            logger.info("=== SHADOW MODE ENABLED ===")
+            logger.info("Initial Balance: 1000.00 USDT (virtual)")
+            logger.info("Using real Binance market data for execution prices")
+        elif graph.executor is not None:
+            # Real mode: fetch actual balance
+            balance = graph.fetch_account_balance()
+            logger.info(
+                "Binance account balance (USDT): total=%.2f free=%.2f",
+                balance.get("total", 0), balance.get("free", 0),
+            )
 
     # Run initial analysis immediately so users can verify AI is working
     logger.info("Running initial analysis cycle...")

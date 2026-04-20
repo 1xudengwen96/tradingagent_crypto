@@ -48,66 +48,74 @@ def create_crypto_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
         
-        system_message = f"""You are the Research Manager for a crypto quantitative fund. Your role is to synthesize technical and macro/on-chain analysis into a comprehensive research report.
+        system_message_template = """你是一家加密货币量化基金的研究经理。你的职责是将技术面和宏观/链上分析综合成一份全面的研究报告。
 
-**Your Responsibilities:**
-1. Synthesize the Technical Analyst and Macro/On-chain Analyst reports
-2. Identify consistencies and divergences between the two perspectives
-3. Assess overall signal quality and confidence
-4. Produce a structured research summary (NOT a trading decision — that's the Portfolio Manager's job)
+**你的职责：**
+1. 综合技术面分析师和宏观/链上分析师的报告
+2. 识别两种视角之间的一致性和分歧
+3. 评估整体信号质量和置信度
+4. 生成结构化的研究总结（不是交易决策——那是投资组合经理的工作）
 
-**Input Reports:**
-- Technical Analysis Report: {technical_report}
-- Macro/On-chain Analysis Report: {macro_onchain_report}
+**输入报告：**
+- 技术面分析报告：{technical_report}
+- 宏观/链上分析报告：{macro_onchain_report}
 
-**Past Research Lessons:**
+**过往研究经验：**
 {past_memory_str}
 
-**Output Format (structured JSON):**
+**输出格式（结构化 JSON）：**
 ```json
 {{
   "synthesis": {{
-    "technical_summary": "<3-4 sentence summary of technical setup>",
-    "macro_summary": "<3-4 sentence summary of macro/on-chain setup>",
+    "technical_summary": "<3-4 句话总结技术面设置>",
+    "macro_summary": "<3-4 句话总结宏观/链上设置>",
     "signal_alignment": "ALIGNED|DIVERGENT|MIXED",
-    "alignment_notes": "<explain if signals agree or conflict>"
+    "alignment_notes": "<解释信号是否一致或有冲突>"
   }},
   "combined_evidence": {{
-    "bullish_factors": ["<factor 1>", "<factor 2>", ...],
-    "bearish_factors": ["<factor 1>", "<factor 2>", ...],
-    "neutral_factors": ["<factor 1>", ...]
+    "bullish_factors": ["<看涨因素 1>", "<看涨因素 2>", ...],
+    "bearish_factors": ["<看跌因素 1>", "<看跌因素 2>", ...],
+    "neutral_factors": ["<中性因素 1>", ...]
   }},
   "signal_quality": {{
     "data_completeness": "HIGH|MODERATE|LOW",
     "signal_clarity": "CLEAR|MIXED|AMBIGUOUS",
-    "confidence_level": <1-10 integer>
+    "confidence_level": <1-10 整数>
   }},
-  "key_risks": ["<risk 1>", "<risk 2>", ...],
-  "research_conclusion": "<2-3 paragraph comprehensive summary for Portfolio Manager>"
+  "key_risks": ["<风险 1>", "<风险 2>", ...],
+  "research_conclusion": "<2-3 段全面的总结，供投资组合经理使用>"
 }}
 
-**Important:**
-- Do NOT make trading decisions (direction, position size, etc.)
-- Focus on synthesizing evidence objectively
-- Highlight any data gaps or conflicting signals
-- This report feeds directly into the Portfolio Manager's decision process
+**重要：**
+- 不要做出交易决策（方向、仓位大小等）
+- 专注于客观综合证据
+- 突出任何数据缺口或冲突信号
+- 本报告将直接输入给投资组合经理用于决策
 
 {instrument_context}
-""" + get_language_instruction()
-        
-        from langchain_core.prompts import ChatPromptTemplate
+"""
+        lang_instruction = get_language_instruction()
+        system_message = system_message_template.format(
+            technical_report=technical_report,
+            macro_onchain_report=macro_onchain_report,
+            past_memory_str=past_memory_str,
+            instrument_context=instrument_context
+        ) + lang_instruction
+
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_message),
+            ("system", "{system_message}"),
+            MessagesPlaceholder(variable_name="messages"),
         ])
-        
-        chain = prompt | llm
-        result = chain.invoke({})
-        
+
+        chain = prompt.partial(system_message=system_message) | llm
+        result = chain.invoke({"messages": state["messages"]})
+
         research_report = result.content
-        
-        # 保存到记忆
-        memory.save_memory(curr_situation, research_report)
-        
+
+        # 保存到记忆 - 使用 add_situations 方法（暂时禁用，避免 BM25 空文档错误）
+        # memory.add_situations([(curr_situation, research_report)])
+
         return {
             "research_report": research_report,
             "investment_plan": research_report,  # 兼容现有 state 字段

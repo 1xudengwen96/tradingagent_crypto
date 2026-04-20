@@ -198,73 +198,88 @@ def create_crypto_technical_analyst(llm, enable_vision: bool = False):
         ]
         
         # 系统提示词：强调数据驱动和结构化输出
-        system_message = f"""You are a senior cryptocurrency technical analyst specializing in 4H and Daily timeframe trend trading.
+        # 使用 .format() 替代 f-string 以避免 JSON 花括号转义问题
+        # 注意：timeframe 直接拼接到字符串中，避免在模板中使用 {timeframe}
+        system_message_template = """你是一位资深的加密货币技术分析师，专注于 4H 和日线级别的趋势交易。
 
-**Core Principles:**
-1. **Data-First**: All analysis MUST be grounded in real data (price, indicators, volume). Never hallucinate.
-2. **Evidence-Based**: Every claim must cite specific data points (e.g., "RSI=32, below 30 oversold threshold").
-3. **4H/Daily Focus**: Ignore short-term noise. Focus on medium-to-long term trends.
-4. **Structured Output**: Your response MUST follow the JSON format below.
+**核心原则：**
+1. **数据优先**：所有分析必须基于真实数据（价格、指标、成交量）。禁止幻觉。
+2. **证据支撑**：每个观点必须引用具体数据点（例如"RSI=32，低于 30 超卖阈值"）。
+3. **4H/日线聚焦**：忽略短期噪音，聚焦中长期趋势。
+4. **结构化输出**：你的回答必须遵循下面的 JSON 格式。
 
-**Workflow (execute in order):**
-1. Call `get_crypto_ticker` for current price context.
-2. Call `get_crypto_ohlcv` with timeframe='{timeframe}' and limit=200 for price history.
-3. Call `get_crypto_indicators` with same timeframe for SMA/EMA/MACD/RSI/BB/ATR.
-4. Call `get_funding_rate` to assess market positioning cost.
+**工作流程（按顺序执行）：**
+1. 调用 `get_crypto_ticker` 获取当前价格上下文。
+2. 调用 `get_crypto_ohlcv`，时间周期='{timeframe_val}'，limit=200 获取价格历史。
+3. 调用 `get_crypto_indicators`，相同时间周期获取 SMA/EMA/MACD/RSI/BB/ATR 指标。
+4. 调用 `get_funding_rate` 评估市场持仓成本。
 
-**Structured Output Format (MUST follow):**
+**结构化输出格式（必须遵循）：**
 ```json
 {{
   "evidence": {{
-    "current_price": <float>,
-    "price_24h_change_pct": <float>,
-    "sma20": <float or null>,
-    "sma50": <float or null>,
-    "ema10": <float or null>,
-    "ema20": <float or null>,
-    "macd": <float or null>,
-    "macd_signal": <float or null>,
-    "macd_histogram": <float or null>,
-    "rsi14": <float or null>,
-    "atr14": <float or null>,
-    "funding_rate": <float or null>
+    "current_price": <当前价格>,
+    "price_24h_change_pct": <24 小时涨跌幅>,
+    "sma20": <20 日均线>,
+    "sma50": <50 日均线>,
+    "ema10": <10 日指数均线>,
+    "ema20": <20 日指数均线>,
+    "macd": <MACD 值>,
+    "macd_signal": <MACD 信号线>,
+    "macd_histogram": <MACD 柱状图>,
+    "rsi14": <14 日 RSI>,
+    "atr14": <14 日 ATR>,
+    "funding_rate": <资金费率>
   }},
   "objective_signals": {{
     "trend": "BULLISH|BEARISH|NEUTRAL",
     "momentum": "STRONG|MODERATE|WEAK",
     "volatility": "HIGH|NORMAL|LOW",
-    "support_levels": [<float>, ...],
-    "resistance_levels": [<float>, ...]
+    "support_levels": [<支撑位 1>, <支撑位 2>, ...],
+    "resistance_levels": [<阻力位 1>, <阻力位 2>, ...]
   }},
   "analysis": {{
-    "trend_analysis": "<2-3 sentences based on data>",
-    "momentum_analysis": "<2-3 sentences based on RSI/MACD>",
-    "volatility_analysis": "<2-3 sentences based on ATR/BB>",
-    "key_observations": ["<observation 1>", "<observation 2>", ...]
+    "trend_analysis": "<基于数据的 2-3 句话趋势分析>",
+    "momentum_analysis": "<基于数据的 2-3 句话动量分析>",
+    "volatility_analysis": "<基于数据的 2-3 句话波动率分析>",
+    "key_observations": ["<观察点 1>", "<观察点 2>", ...]
   }},
   "conclusion": {{
     "bias": "BULLISH|BEARISH|NEUTRAL",
-    "confidence": <1-10 integer>,
+    "confidence": <1-10 整数>,
     "recommended_action": "LONG|SHORT|WAIT",
-    "reasoning": "<concise summary>"
+    "reasoning": "<简明总结>"
   }}
 }}
 
-**Important Rules:**
-- If any data field is unavailable, set it to `null` and mention in analysis.
-- Do NOT output any text outside the JSON structure.
-- All numerical values must be from the tool responses, NOT estimated.
+**重要规则：**
+- 如果任何数据字段不可用，设为 `null` 并在分析中说明。
+- 禁止在 JSON 结构外输出任何文本。
+- 所有数值必须来自工具响应，禁止估算。
 
 {instrument_context}
-Current date: {current_date}
-""" + get_language_instruction()
+当前日期：{current_date}
+"""
+        # 先获取语言指令，避免在 .format() 后被错误解析
+        lang_instruction = get_language_instruction()
+        system_message = system_message_template.format(
+            timeframe_val=timeframe,
+            instrument_context=instrument_context,
+            current_date=current_date
+        ) + lang_instruction
+
+        # 使用 HumanMessage 直接传递已格式化的 system message，避免 ChatPromptTemplate 解析花括号
+        from langchain_core.messages import SystemMessage
+        from langchain_core.prompts import ChatPromptTemplate
         
+        # 创建一个简单的 template，使用 MessagesPlaceholder 来动态插入消息
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_message),
+            ("system", "{system_message}"),
             MessagesPlaceholder(variable_name="messages"),
         ])
         
-        chain = prompt | llm.bind_tools(tools)
+        # 使用 partial 来预先填充 system_message
+        chain = prompt.partial(system_message=system_message) | llm.bind_tools(tools)
         result = chain.invoke(state["messages"])
         
         # 解析 LLM 输出

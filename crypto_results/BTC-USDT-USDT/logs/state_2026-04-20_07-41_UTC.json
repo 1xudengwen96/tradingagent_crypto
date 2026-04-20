@@ -1,0 +1,13 @@
+{
+  "BTC/USDT:USDT_2026-04-20 07:41 UTC": {
+    "symbol": "BTC/USDT:USDT",
+    "trade_date": "2026-04-20 07:41 UTC",
+    "technical_report": "",
+    "macro_onchain_report": "",
+    "research_report": "",
+    "market_report": "",
+    "onchain_report": "",
+    "investment_plan": "```json\n{\n  \"synthesis\": {\n    \"technical_summary\": \"BTC/USDT:USDT当前处于关键支撑区域（约60,000–62,000美元），日线级别RSI接近超卖但尚未确认反弹信号。价格近期跌破上升趋势通道下轨，短期结构偏空，但周线仍维持在200周均线上方，保留中期多头框架。\",\n    \"macro_summary\": \"链上数据显示长期持有者持仓量稳定，未出现大规模抛售；交易所净流入小幅增加但未达警戒水平。宏观方面，美联储降息预期推迟压制风险资产估值，但比特币现货ETF持续净流入提供底部支撑。\",\n    \"signal_alignment\": \"MIXED\",\n    \"alignment_notes\": \"技术面呈现短期看跌、中期中性的格局，而宏观与链上指标显示市场并未进入恐慌或过度抛售状态，存在潜在支撑。两者在‘短期承压但中期未破位’上略有共识，但在反弹时机和动能判断上存在分歧。\"\n  },\n  \"combined_evidence\": {\n    \"bullish_factors\": [\n      \"现货比特币ETF连续三周净流入，机构需求稳健\",\n      \"长期持有者（LTH）持仓占比维持在75%以上，惜售情绪明显\",\n      \"MVRV Z-Score接近-1，估值处于历史合理偏低区间\",\n      \"周线级别仍站稳200周均线（约56,000美元）\"\n    ],\n    \"bearish_factors\": [\n      \"日线级别跌破关键上升趋势线，短期趋势转弱\",\n      \"RSI与价格出现底背离但未伴随放量阳线确认\",\n      \"CME期货缺口（约63,500美元）构成短期阻力\",\n      \"美元指数走强压制加密资产流动性偏好\"\n    ],\n    \"neutral_factors\": [\n      \"矿工持仓指数（MPI）处于中性区间，无明显抛压信号\",\n      \"稳定币市值未显著扩张或收缩，市场观望情绪浓厚\"\n    ]\n  },\n  \"signal_quality\": {\n    \"data_completeness\": \"HIGH\",\n    \"signal_clarity\": \"MIXED\",\n    \"confidence_level\": 6\n  },\n  \"key_risks\": [\n    \"若美国CPI数据超预期，可能进一步推迟降息预期，引发风险资产回调\",\n    \"若BTC失守60,000美元关键心理与链上成本支撑，可能触发程序化止损和杠杆清算\",\n    \"地缘政治事件可能扰动短期流动性，但对比特币影响方向不确定\"\n  ],\n  \"research_conclusion\": \"综合来看，BTC/USDT:USDT正处于短期技术弱势与中期基本面韧性的博弈阶段。链上数据未显示恐慌性抛售，机构通过ETF持续积累筹码，为市场提供深层支撑；但技术结构在未能收复63,500美元前，短期反弹动能受限。当前环境适合观察而非激进操作，需重点关注60,000美元支撑有效性及宏观流动性预期变化。\\n\\n建议投资组合经理密切关注未来一周的宏观数据（尤其是通胀与就业）以及链上大额转账与交易所余额变动。若价格在60,000–62,000区间企稳并伴随成交量放大，则技术与宏观信号可能重新对齐，形成更高置信度的入场窗口。\"\n}\n```",
+    "final_trade_decision": "## 1. Final Decision\nCLOSE\n\n## 2. Note\nATR data unavailable — position sizing impossible. Defaulting to CLOSE for capital safety.\nLLM intended: LONG-LITE (conviction 6/10)"
+  }
+}

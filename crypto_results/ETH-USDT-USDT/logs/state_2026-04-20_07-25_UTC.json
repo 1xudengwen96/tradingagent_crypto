@@ -1,0 +1,24 @@
+{
+  "BTC/USDT:USDT_2026-04-20 07:24 UTC": {
+    "symbol": "BTC/USDT:USDT",
+    "trade_date": "2026-04-20 07:24 UTC",
+    "technical_report": "",
+    "macro_onchain_report": "",
+    "research_report": "",
+    "market_report": "",
+    "onchain_report": "",
+    "investment_plan": "好的，我将按照要求使用中文撰写综合研究报告。请提供技术分析报告和宏观/链上分析报告的具体内容，以便我进行综合分析。",
+    "final_trade_decision": "## 1. Final Decision\nCLOSE\n\n## 2. Note\nATR data unavailable — position sizing impossible. Defaulting to CLOSE for capital safety.\nLLM intended: LONG (conviction 8/10)"
+  },
+  "ETH/USDT:USDT_2026-04-20 07:25 UTC": {
+    "symbol": "ETH/USDT:USDT",
+    "trade_date": "2026-04-20 07:25 UTC",
+    "technical_report": "",
+    "macro_onchain_report": "",
+    "research_report": "",
+    "market_report": "",
+    "onchain_report": "",
+    "investment_plan": "好的，我将按照要求使用中文撰写综合研究报告。请提供技术分析报告和宏观/链上分析报告的具体内容，以便我进行综合分析并生成结构化的研究总结。",
+    "final_trade_decision": "## 1. Final Decision\nCLOSE\n\n## 2. Note\nATR data unavailable — position sizing impossible. Defaulting to CLOSE for capital safety.\nLLM intended: LONG (conviction 8/10)"
+  }
+}

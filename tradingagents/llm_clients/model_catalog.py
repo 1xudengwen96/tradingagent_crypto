@@ -89,11 +89,15 @@ MODEL_OPTIONS: ProviderModeOptions = {
         "quick": [
             ("Qwen Turbo - Fast, low latency", "qwen-turbo"),
             ("Qwen Plus - Balanced capability and cost", "qwen-plus"),
+            ("Qwen3.6-Plus - Latest balanced model (推荐)", "qwen3.6-plus"),
+            ("Qwen3-Max - Latest flagship model", "qwen3-max"),
             ("Qwen2.5-7B-Instruct - Lightweight open-source", "qwen2.5-7b-instruct"),
             ("Qwen2.5-32B-Instruct - Large open-source", "qwen2.5-32b-instruct"),
         ],
         "deep": [
-            ("Qwen Max - Flagship, strongest overall", "qwen-max"),
+            ("Qwen3-Max - Latest flagship model (推荐)", "qwen3-max"),
+            ("Qwen3.6-Plus - Latest balanced model", "qwen3.6-plus"),
+            ("Qwen Max - Previous flagship model", "qwen-max"),
             ("Qwen2.5-72B-Instruct - Most capable open-source", "qwen2.5-72b-instruct"),
             ("Qwen Plus - Balanced capability and cost", "qwen-plus"),
             ("Qwen Long - 1M token context window", "qwen-long"),

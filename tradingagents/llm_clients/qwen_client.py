@@ -10,7 +10,11 @@ Qwen（通义千问）LLM 客户端
 - 接口格式: OpenAI Chat Completions 兼容
 
 支持的 Qwen 模型：
-- qwen-max           : 旗舰模型，综合能力最强
+- qwen3-max         : 最新旗舰模型，综合能力最强（推荐）
+- qwen3.6-plus      : 最新平衡模型，性价比高（推荐）
+- qwen3.5-max       : 上一代旗舰模型
+- qwen3.5-plus      : 上一代平衡模型
+- qwen-max           : 上一代旗舰模型
 - qwen-plus          : 平衡能力与成本
 - qwen-turbo         : 快速，低延迟
 - qwen-long          : 超长上下文（1M token）
@@ -90,6 +94,6 @@ class QwenClient(BaseLLMClient):
 
     def validate_model(self) -> bool:
         """Qwen 模型名称校验（宽松校验）。"""
-        known_prefixes = ("qwen", "qwen2", "qwen2.5", "qwen3")
+        known_prefixes = ("qwen", "qwen2", "qwen2.5", "qwen3", "qwen3.5", "qwen3.6")
         model_lower = self.model.lower()
         return any(model_lower.startswith(p) for p in known_prefixes)

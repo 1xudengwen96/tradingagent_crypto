@@ -47,6 +47,37 @@ BTC_MA200_PERIOD = 200      # BTC 200 日均线周期
 # 工具函数：从 Bitget 获取 ATR 和 200 日均线
 # ─────────────────────────────────────────────────────────
 
+def _normalize_symbol(symbol: str, exchange: str = "gate") -> str:
+    """
+    标准化交易对符号格式以适应不同交易所。
+    
+    Args:
+        symbol: 原始符号，如 'BTCUSDT', 'BTC/USDT:USDT', 'BTC/USDT'
+        exchange: 目标交易所 ('gate', 'binance', 'bitget')
+    
+    Returns:
+        格式化后的符号
+    """
+    # 移除所有可能的后缀
+    clean = symbol.replace(":USDT", "").replace("/USDT", "").replace("USDT", "").strip()
+    
+    if exchange == "gate":
+        # Gate.io 合约：BTC/USDT:USDT
+        return f"{clean}/USDT:USDT"
+    elif exchange == "binance":
+        # Binance 合约：BTC/USDT (spot format for fapi)
+        return f"{clean}/USDT"
+    elif exchange == "bitget":
+        # Bitget 合约：BTC/USDT:USDT
+        return f"{clean}/USDT:USDT"
+    else:
+        return symbol
+
+
+# ─────────────────────────────────────────────────────────
+# 工具函数：从 Bitget 获取 ATR 和 200 日均线
+# ─────────────────────────────────────────────────────────
+
 def _fetch_atr_and_price(
     symbol: str,
     timeframe: str = "1d",
@@ -55,6 +86,7 @@ def _fetch_atr_and_price(
 ) -> Tuple[Optional[float], Optional[float]]:
     """
     通过 CCXT 获取指定交易对的 ATR14 和最新已收盘价格。
+    优先使用 Bitget，失败时自动降级到 Binance。
 
     Args:
         symbol:     交易对，如 'BTC/USDT:USDT'
@@ -65,12 +97,65 @@ def _fetch_atr_and_price(
     Returns:
         (atr14, current_price) 或 (None, None) 若获取失败
     """
+    # 尝试 Bitget（主数据源）
     try:
         from tradingagents.dataflows.bitget_vendor import get_bitget_exchange, _filter_closed_daily_candles
         exchange = get_bitget_exchange()
 
         limit = period + extra_limit + 1  # +1 以备过滤当前未收盘 K 线
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        if not ohlcv:
+            return None, None
+
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.sort_values("datetime").reset_index(drop=True)
+
+        # 保存原始收盘价（用于获取最新价格）
+        original_close = df["close"].iloc[-1]
+
+        # 日线模式强制过滤未收盘 K 线（ATR 计算需要）
+        if timeframe in ("1d", "3d"):
+            df = _filter_closed_daily_candles(df)
+
+        if len(df) < period + 1:
+            return None, None
+
+        # 计算 ATR（真实波幅均值）
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
+        tr = pd.concat([
+            high - low,
+            (high - close.shift()).abs(),
+            (low - close.shift()).abs(),
+        ], axis=1).max(axis=1)
+        atr = tr.rolling(period).mean().iloc[-1]
+        
+        # 使用原始最新收盘价，而不是过滤后的价格
+        current_price = original_close
+
+        return float(atr), float(current_price)
+
+    except Exception as e:
+        logger.warning("Bitget ATR 获取失败 (%s %s): %s", symbol, timeframe, e)
+        logger.info("尝试降级到 Binance 获取 ATR 数据...")
+
+    # 降级到 Binance（备用数据源）
+    try:
+        import ccxt
+        from tradingagents.dataflows.bitget_vendor import _filter_closed_daily_candles
+        
+        # Binance 测试网不支持 fapiPublic，强制使用实盘 API（只读，不下单）
+        exchange = ccxt.binanceusdm({
+            'options': {'defaultType': 'future'},
+            'enableRateLimit': True,
+        })
+        logger.info("使用 Binance 实盘 API 获取 ATR（只读模式）")
+
+        # Binance 测试网不支持 fapiPublic 端点，需要使用实盘或调整配置
+        limit = period + extra_limit + 1
+        ohlcv = exchange.fetch_ohlcv(symbol.replace(":USDT", "/USDT"), timeframe=timeframe, limit=limit)
         if not ohlcv:
             return None, None
 
@@ -97,21 +182,78 @@ def _fetch_atr_and_price(
         atr = tr.rolling(period).mean().iloc[-1]
         current_price = close.iloc[-1]
 
+        logger.info("Binance ATR 获取成功：%s USDT", atr)
         return float(atr), float(current_price)
 
     except Exception as e:
-        logger.warning("ATR 获取失败 (%s %s): %s", symbol, timeframe, e)
+        logger.error("Binance ATR 获取也失败 (%s %s): %s", symbol, timeframe, e)
+        logger.info("尝试降级到 Gate.io 获取 ATR 数据...")
+
+    # 降级到 Gate.io（第三备用数据源）
+    try:
+        import ccxt
+        from tradingagents.dataflows.bitget_vendor import _filter_closed_daily_candles
+
+        exchange = ccxt.gate({
+            'options': {'defaultType': 'swap'},
+            'enableRateLimit': True,
+        })
+        logger.info("使用 Gate.io 获取 ATR（只读模式）")
+
+        # Gate.io 需要标准格式：BTC/USDT:USDT
+        gate_symbol = _normalize_symbol(symbol, "gate")
+        limit = period + extra_limit + 1
+        ohlcv = exchange.fetch_ohlcv(gate_symbol, timeframe=timeframe, limit=limit)
+        if not ohlcv:
+            return None, None
+
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.sort_values("datetime").reset_index(drop=True)
+
+        # 保存原始收盘价（用于获取最新价格）
+        original_close = df["close"].iloc[-1]
+
+        # 日线模式强制过滤未收盘 K 线（ATR 计算需要）
+        if timeframe in ("1d", "3d"):
+            df = _filter_closed_daily_candles(df)
+
+        if len(df) < period + 1:
+            return None, None
+
+        # 计算 ATR（真实波幅均值）
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
+        tr = pd.concat([
+            high - low,
+            (high - close.shift()).abs(),
+            (low - close.shift()).abs(),
+        ], axis=1).max(axis=1)
+        atr = tr.rolling(period).mean().iloc[-1]
+        
+        # 使用原始最新收盘价，而不是过滤后的价格
+        current_price = original_close
+
+        logger.info("Gate.io ATR 获取成功：%s USDT", atr)
+        return float(atr), float(current_price)
+
+    except Exception as e:
+        logger.error("Gate.io ATR 获取也失败 (%s %s): %s", symbol, timeframe, e)
         return None, None
 
 
 def _fetch_btc_ma200(timeframe: str = "1d") -> Tuple[Optional[float], Optional[float]]:
     """
     获取 BTC 的 200 日均线和当前已收盘价，用于趋势拦截器。
+    支持多交易所降级：Bitget → Binance → Gate.io
 
     Returns:
         (btc_price, btc_ma200) 或 (None, None) 若获取失败
     """
     btc_symbol = "BTC/USDT:USDT"
+
+    # ── 尝试 1: Bitget（主数据源）─────────────────────────────────────
     try:
         from tradingagents.dataflows.bitget_vendor import get_bitget_exchange, _filter_closed_daily_candles
         exchange = get_bitget_exchange()
@@ -119,6 +261,103 @@ def _fetch_btc_ma200(timeframe: str = "1d") -> Tuple[Optional[float], Optional[f
         ohlcv = exchange.fetch_ohlcv(btc_symbol, timeframe=timeframe, limit=BTC_MA200_PERIOD + 2)
         if not ohlcv:
             return None, None
+
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.sort_values("datetime").reset_index(drop=True)
+
+        # 保存原始收盘价（用于获取最新价格）
+        original_close = df["close"].iloc[-1]
+
+        if timeframe in ("1d", "3d"):
+            df = _filter_closed_daily_candles(df)
+
+        if len(df) < BTC_MA200_PERIOD:
+            logger.warning("BTC 数据不足 %d 根日线，跳过 200MA 拦截", BTC_MA200_PERIOD)
+            return None, None
+
+        btc_price = original_close
+        btc_ma200 = float(df["close"].rolling(BTC_MA200_PERIOD).mean().iloc[-1])
+        logger.info("Bitget BTC 200MA 获取成功：价格=%.0f, MA200=%.0f", btc_price, btc_ma200)
+        return btc_price, btc_ma200
+
+    except Exception as e:
+        logger.warning("Bitget BTC 200MA 获取失败：%s，尝试降级到 Binance", e)
+
+    # ── 尝试 2: Binance（备用数据源）─────────────────────────────────
+    try:
+        import ccxt
+        from tradingagents.dataflows.bitget_vendor import _filter_closed_daily_candles
+
+        exchange = ccxt.binanceusdm({
+            'options': {'defaultType': 'future'},
+            'enableRateLimit': True,
+        })
+        logger.info("使用 Binance 实盘 API 获取 BTC 200MA（只读模式）")
+
+        ohlcv = exchange.fetch_ohlcv("BTC/USDT", timeframe=timeframe, limit=BTC_MA200_PERIOD + 2)
+        if not ohlcv:
+            return None, None
+
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.sort_values("datetime").reset_index(drop=True)
+
+        # 保存原始收盘价（用于获取最新价格）
+        original_close = df["close"].iloc[-1]
+
+        if timeframe in ("1d", "3d"):
+            df = _filter_closed_daily_candles(df)
+
+        if len(df) < BTC_MA200_PERIOD:
+            return None, None
+
+        btc_price = original_close
+        btc_ma200 = float(df["close"].rolling(BTC_MA200_PERIOD).mean().iloc[-1])
+        logger.info("Binance BTC 200MA 获取成功：价格=%.0f, MA200=%.0f", btc_price, btc_ma200)
+        return btc_price, btc_ma200
+
+    except Exception as e:
+        logger.warning("Binance BTC 200MA 获取失败：%s，尝试降级到 Gate.io", e)
+
+    # ── 尝试 3: Gate.io（第三备用数据源）──────────────────────────────
+    try:
+        import ccxt
+        from tradingagents.dataflows.bitget_vendor import _filter_closed_daily_candles
+
+        exchange = ccxt.gate({
+            'options': {'defaultType': 'swap'},
+            'enableRateLimit': True,
+        })
+        logger.info("使用 Gate.io 获取 BTC 200MA（只读模式）")
+
+        # Gate.io 需要标准格式：BTC/USDT:USDT
+        gate_symbol = _normalize_symbol(btc_symbol, "gate")
+        ohlcv = exchange.fetch_ohlcv(gate_symbol, timeframe=timeframe, limit=BTC_MA200_PERIOD + 2)
+        if not ohlcv:
+            return None, None
+
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.sort_values("datetime").reset_index(drop=True)
+
+        # 保存原始收盘价（用于获取最新价格）
+        original_close = df["close"].iloc[-1]
+
+        if timeframe in ("1d", "3d"):
+            df = _filter_closed_daily_candles(df)
+
+        if len(df) < BTC_MA200_PERIOD:
+            return None, None
+
+        btc_price = original_close
+        btc_ma200 = float(df["close"].rolling(BTC_MA200_PERIOD).mean().iloc[-1])
+        logger.info("Gate.io BTC 200MA 获取成功：价格=%.0f, MA200=%.0f", btc_price, btc_ma200)
+        return btc_price, btc_ma200
+
+    except Exception as e:
+        logger.error("Gate.io BTC 200MA 也获取失败：%s", e)
+        return None, None
 
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
@@ -230,33 +469,33 @@ def compute_position_params(
 
 
 def format_execution_block(params: Dict[str, Any], rationale: str) -> str:
-    """将仓位参数格式化为 Executor 可解析的标准输出字符串。"""
+    """将仓位参数格式化为 Executor 可解析的标准输出字符串（中文版）。"""
     d = params["direction"]
     is_long = d.startswith("LONG")
 
     lines = [
-        f"## 1. Final Decision",
+        f"## 1. 最终决策",
         f"{d}",
         f"",
-        f"## 2. Execution Parameters (Python ATR-Model, NOT LLM-generated)",
-        f"- Direction: {'LONG' if is_long else 'SHORT'}",
-        f"- Leverage: 1x  [No leverage — risk controlled via position size]",
-        f"- Position Size: {params['position_pct']}% of capital ({params['position_usdt']} USDT)",
-        f"- Entry: MARKET",
-        f"- Stop-Loss: {params['stop_loss']}  [= entry {'-' if is_long else '+'} {ATR_MULTIPLIER}×ATR14({params['atr14']})]",
-        f"- Take-Profit 1: {params['take_profit_1']}  [R/R = {TP1_RISK_REWARD}:1]",
-        f"- Take-Profit 2: {params['take_profit_2']}  [R/R = {TP2_RISK_REWARD}:1]",
-        f"- Time Horizon: 1-3 days (daily swing)",
-        f"- Max Loss This Trade: {params['max_loss_usdt']} USDT ({params['risk_pct']}% of capital)",
+        f"## 2. 执行参数（Python ATR 模型计算，LLM 不可干预）",
+        f"- 方向：{'做多' if is_long else '做空'}",
+        f"- 杠杆：1x  [不使用杠杆，风险通过仓位大小控制]",
+        f"- 仓位：{params['position_pct']}% 总资金（{params['position_usdt']} USDT）",
+        f"- 入场：市价单",
+        f"- 止损：{params['stop_loss']}  [= 入场价 {'-' if is_long else '+'} {ATR_MULTIPLIER}×ATR14({params['atr14']})]",
+        f"- 止盈 1: {params['take_profit_1']}  [风险收益比 = {TP1_RISK_REWARD}:1]",
+        f"- 止盈 2: {params['take_profit_2']}  [风险收益比 = {TP2_RISK_REWARD}:1]",
+        f"- 持仓周期：1-3 天（日线波段）",
+        f"- 最大亏损：{params['max_loss_usdt']} USDT（占总资金 {params['risk_pct']}%）",
         f"",
-        f"## 3. LLM Direction Rationale",
+        f"## 3. LLM 决策理由",
         rationale,
         f"",
-        f"## 4. Risk Parameters (Hardcoded Math — Cannot Be Overridden by LLM)",
+        f"## 4. 风险参数（Python 硬编码计算，LLM 不可覆盖）",
         f"- ATR14: {params['atr14']} USDT",
-        f"- Stop Distance: {params['stop_loss_dist']} USDT",
-        f"- Conviction Score: {params['conviction_score']}/10",
-        f"- Risk Per Trade: {params['risk_pct']}%",
+        f"- 止损距离：{params['stop_loss_dist']} USDT",
+        f"- 信心评分：{params['conviction_score']}/10",
+        f"- 单笔风险：{params['risk_pct']}%",
     ]
     return "\n".join(lines)
 
@@ -297,30 +536,44 @@ def create_crypto_portfolio_manager(llm, memory):
         timeframe = config.get("timeframe", "1d")
 
         # ── Step 1: LLM 只决定方向和信心 ──────────────────────────────
-        direction_prompt = f"""You are the Chief Portfolio Manager for a crypto quant fund. Your role is STRICTLY LIMITED to:
+        direction_prompt_template = """你是一家加密货币量化基金的首席投资组合经理。你的职责严格限定为：
 
-1. Choosing a direction: LONG / LONG-LITE / SHORT / SHORT-LITE / CLOSE
-2. Assigning a conviction score: integer from 1 (weakest) to 10 (strongest)
-3. Writing a 2-3 sentence rationale
+1. 选择方向：LONG / LONG-LITE / SHORT / SHORT-LITE / CLOSE
+2. 分配信心分数：整数从 1（最弱）到 10（最强）
+3. 写 2-3 句理由
 
-You do NOT set leverage, position size, stop-loss, or take-profit prices.
-Those are computed by a hardcoded Python risk engine.
+你不设置杠杆、仓位大小、止损或止盈价格。
+这些由硬编码的 Python 风险引擎计算。
 
 {instrument_context}
 
-**Context:**
-- Research Team's Plan: {trader_plan}
-- Risk Debate History: {history}
-- Past Decision Lessons: {past_memory_str}
+**上下文：**
+- 研究团队的计划：{trader_plan}
+- 风险辩论历史：{history}
+- 过往决策经验：{past_memory_str}
 
-**Output format (strictly follow this):**
+**输出格式（严格遵循）：**
 DIRECTION: <LONG|LONG-LITE|SHORT|SHORT-LITE|CLOSE>
-CONVICTION: <1-10>
-RATIONALE: <2-3 sentences>
+CONVICTION: <1-10 整数>
+RATIONALE: <2-3 句话>
 
-Be decisive. Output nothing else.{get_language_instruction()}"""
+要果断。只输出以上内容，不要输出其他内容。{lang_instruction}"""
+        lang_instruction = get_language_instruction()
+        direction_prompt = direction_prompt_template.format(
+            instrument_context=instrument_context,
+            trader_plan=trader_plan,
+            history=history,
+            past_memory_str=past_memory_str,
+            lang_instruction=lang_instruction
+        )
 
-        llm_response = llm.invoke(direction_prompt)
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "{system_message}"),
+            MessagesPlaceholder(variable_name="messages"),
+        ])
+        chain = prompt.partial(system_message=direction_prompt) | llm
+        llm_response = chain.invoke({"messages": state["messages"]})
         llm_text = llm_response.content
 
         # ── Step 2: 解析 LLM 输出 ──────────────────────────────────────
@@ -338,13 +591,13 @@ Be decisive. Output nothing else.{get_language_instruction()}"""
                 direction = "CLOSE"
                 intercepted = True
                 intercept_note = (
-                    f"\n⚠️  [HARD BLOCK] BTC 200MA Interceptor triggered: "
-                    f"BTC ${btc_price:.0f} < MA200 ${btc_ma200:.0f}. "
-                    f"LLM direction '{old_direction}' overridden → CLOSE (flat only)."
+                    f"\n⚠️  [硬性拦截] BTC 200 日均线拦截器触发："
+                    f"BTC ${btc_price:.0f} < MA200 ${btc_ma200:.0f}。"
+                    f"LLM 方向 '{old_direction}' 被强制覆盖 → CLOSE（仅平仓）。"
                 )
                 logger.warning(
-                    "BTC 200MA Interceptor: BTC %.0f < MA200 %.0f — "
-                    "overriding %s → CLOSE for %s",
+                    "BTC 200MA 拦截器：BTC %.0f < MA200 %.0f — "
+                    "覆盖 %s → CLOSE for %s",
                     btc_price, btc_ma200, old_direction, symbol
                 )
 
@@ -361,10 +614,10 @@ Be decisive. Output nothing else.{get_language_instruction()}"""
                     "ATR 获取失败，无法计算仓位，强制降级为 CLOSE (%s)", symbol
                 )
                 final_text = (
-                    "## 1. Final Decision\nCLOSE\n\n"
-                    "## 2. Note\nATR data unavailable — position sizing impossible. "
-                    "Defaulting to CLOSE for capital safety.\n"
-                    f"LLM intended: {direction} (conviction {conviction_score}/10)"
+                    "## 1. 最终决策\nCLOSE\n\n"
+                    "## 2. 说明\nATR 数据不可用 — 无法计算仓位大小。"
+                    "为保障资金安全，默认选择平仓观望。\n"
+                    f"LLM 原意：{direction}（信心 {conviction_score}/10）"
                 )
             else:
                 params = compute_position_params(
@@ -379,7 +632,44 @@ Be decisive. Output nothing else.{get_language_instruction()}"""
                 if intercept_note:
                     final_text = intercept_note + "\n\n" + final_text
 
-        # ── Step 5: 更新状态 ─────────────────────────────────────────
+        # ── Step 5: 生成风险经理报告 ───────────────────────────────────
+        risk_assessment = ""
+        if atr14 is not None and entry_price is not None and direction != "CLOSE":
+            params = compute_position_params(
+                direction=direction,
+                entry_price=entry_price,
+                atr14=atr14,
+                capital_usdt=capital_usdt,
+                conviction_score=conviction_score,
+                config=config,
+            )
+            risk_assessment = f"""## 🛡️ 风险经理评估报告
+
+### 1. 风险参数计算（Python 硬编码，不可被 LLM 干预）
+- **ATR14**: {params['atr14']} USDT
+- **止损距离**: {params['stop_loss_dist']} USDT（占价格 {params['stop_loss_dist']/entry_price*100:.2f}%）
+- **仓位大小**: {params['position_usdt']} USDT（占总资金 {params['position_pct']:.1f}%）
+- **最大亏损**: {params['max_loss_usdt']} USDT（占总资金 {params['risk_pct']:.1f}%）
+- **杠杆倍数**: 1x（不使用杠杆，风险通过仓位大小控制）
+
+### 2. 风险评估
+- **波动率评估**: {'高' if params['atr14']/entry_price > 0.03 else '中' if params['atr14']/entry_price > 0.015 else '低'}（ATR/Price = {params['atr14']/entry_price*100:.2f}%）
+- **风险收益比**:
+  - TP1 盈亏比 = 2.0:1
+  - TP2 盈亏比 = 3.5:1
+- **建议风险等级**: {'⚠️ 高风险' if params['atr14']/entry_price > 0.03 else '⚖️ 中等风险' if params['atr14']/entry_price > 0.015 else '✅ 低风险'}
+
+### 3. 风控规则执行
+- ✅ 止损必须基于 ATR（1.5×ATR14）
+- ✅ 单笔最大亏损不超过 1% 资金
+- ✅ 单一方向最大仓位不超过 30%
+- ✅ LITE 信号仓位减半
+
+### 4. 风险经理总结
+基于当前波动率和仓位计算，该交易的风险可控。止损位设置合理，风险收益比符合量化标准。建议严格执行止损纪律。
+"""
+
+        # ── Step 6: 更新状态 ─────────────────────────────────────────
         new_risk_debate_state = {
             "judge_decision": final_text,
             "history": risk_debate_state["history"],
@@ -396,6 +686,7 @@ Be decisive. Output nothing else.{get_language_instruction()}"""
         return {
             "risk_debate_state": new_risk_debate_state,
             "final_trade_decision": final_text,
+            "risk_assessment": risk_assessment,
         }
 
     return portfolio_manager_node
@@ -457,18 +748,18 @@ def _parse_llm_direction_output(text: str):
 def _format_close_decision(symbol: str, rationale: str, note: str = "") -> str:
     """格式化 CLOSE 决策的输出文本。"""
     lines = [
-        "## 1. Final Decision",
-        "CLOSE",
+        "## 1. 最终决策",
+        "CLOSE（平仓观望）",
         "",
-        "## 2. Execution Parameters",
-        "- Direction: FLAT",
-        "- Action: Close all open positions for this symbol",
-        "- Entry: N/A",
-        "- Stop-Loss: N/A",
-        "- Take-Profit 1: N/A",
-        "- Take-Profit 2: N/A",
+        "## 2. 执行参数",
+        "- 方向：FLAT（空仓）",
+        "- 操作：关闭该交易对的所有仓位",
+        "- 入场：不适用",
+        "- 止损：不适用",
+        "- 止盈 1：不适用",
+        "- 止盈 2：不适用",
         "",
-        "## 3. Rationale",
+        "## 3. 决策理由",
         rationale,
     ]
     result = "\n".join(lines)

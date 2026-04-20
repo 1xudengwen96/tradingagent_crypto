@@ -1,7 +1,7 @@
 # tradingagents/agents/utils/crypto_tools.py
 """
 加密货币专用 LangChain 工具集。
-这些工具通过 route_to_vendor 路由到 Bitget 数据层，并绑定到各智能体节点。
+这些工具通过 route_to_vendor 路由到 Binance 数据层，并绑定到各智能体节点。
 """
 
 from langchain_core.tools import tool
